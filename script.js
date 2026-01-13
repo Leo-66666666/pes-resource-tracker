@@ -185,6 +185,59 @@ function logout() {
     showLogin();
 }
 
+// 获取昨日数据
+function getYesterdayData(todayDate) {
+    const today = new Date(todayDate);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    
+    // 查找昨天的记录
+    if (userData.records && userData.records[yesterdayStr]) {
+        return userData.records[yesterdayStr];
+    }
+    
+    // 如果没有昨天的记录，返回空数据
+    return {
+        gold: 0,
+        heart_points: 0,
+        highlight_coupons: 0,
+        new_highlight: 0,
+        return_highlight: 0,
+        exit_highlight: 0,
+        highlight_coins: 0
+    };
+}
+
+// 计算每日盈亏
+function calculateDailyProfitLoss(date) {
+    const todayData = userData.records[date];
+    if (!todayData) return null;
+    
+    const yesterday = new Date(date);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    const yesterdayData = userData.records[yesterdayStr] || {
+        gold: 0,
+        heart_points: 0,
+        highlight_coupons: 0,
+        new_highlight: 0,
+        return_highlight: 0,
+        exit_highlight: 0,
+        highlight_coins: 0
+    };
+    
+    return {
+        gold: todayData.gold - yesterdayData.gold,
+        heart_points: todayData.heart_points - yesterdayData.heart_points,
+        highlight_coupons: todayData.highlight_coupons - yesterdayData.highlight_coupons,
+        new_highlight: todayData.new_highlight - yesterdayData.new_highlight,
+        return_highlight: todayData.return_highlight - yesterdayData.return_highlight,
+        exit_highlight: todayData.exit_highlight - yesterdayData.exit_highlight,
+        highlight_coins: todayData.highlight_coins - yesterdayData.highlight_coins
+    };
+}
+
 // 加载指定日期的数据
 function loadDateData() {
     const date = document.getElementById('current-date').value;
@@ -227,6 +280,16 @@ async function saveData() {
         highlight_coins: parseInt(document.getElementById('highlight-coins').value) || 0
     };
     
+    // 验证数据
+    const yesterdayData = getYesterdayData(date);
+    for (const [key, value] of Object.entries(record)) {
+        if (key !== 'note' && value < yesterdayData[key]) {
+            if (!confirm(`警告：今日${getResourceChineseName(key)}总量(${value})小于昨日(${yesterdayData[key]})。确定要保存吗？`)) {
+                return;
+            }
+        }
+    }
+    
     // 保存到用户数据
     if (!userData.records) {
         userData.records = {};
@@ -242,7 +305,21 @@ async function saveData() {
     // 更新日历显示
     generateCalendar();
     
-    alert('数据保存成功！');
+    alert('今日总量保存成功！系统会自动计算盈亏。');
+}
+
+// 获取资源中文名
+function getResourceChineseName(englishName) {
+    const nameMap = {
+        'gold': '金币',
+        'heart_points': '心仪积分',
+        'highlight_coupons': '高光券',
+        'new_highlight': '新高光球员',
+        'return_highlight': '返场高光',
+        'exit_highlight': '退场高光',
+        'highlight_coins': '高光币'
+    };
+    return nameMap[englishName] || englishName;
 }
 
 // 重置表单
@@ -273,7 +350,7 @@ async function copyYesterday() {
         document.getElementById('return-highlight').value = yesterdayRecord.return_highlight || 0;
         document.getElementById('exit-highlight').value = yesterdayRecord.exit_highlight || 0;
         document.getElementById('highlight-coins').value = yesterdayRecord.highlight_coins || 0;
-        alert('昨日数据已导入！');
+        alert('昨日总量已导入！请修改为今日总量后保存。');
     } else {
         alert('找不到昨日的记录！');
     }
@@ -338,9 +415,14 @@ function generateCalendar() {
         calendarEl.appendChild(emptyEl);
     }
     
-    // 添加日期单元格
-    let totalGold = 0;
-    let totalHeart = 0;
+    // 计算本月总盈亏
+    let totalGoldChange = 0;
+    let totalHeartChange = 0;
+    let totalCouponsChange = 0;
+    let totalCoinsChange = 0;
+    let totalNewHighlightChange = 0;
+    let totalReturnHighlightChange = 0;
+    let totalExitHighlightChange = 0;
     let hasDataDays = 0;
     
     for (let day = 1; day <= lastDay.getDate(); day++) {
@@ -356,21 +438,59 @@ function generateCalendar() {
         // 检查是否有数据
         if (userData.records && userData.records[date]) {
             dayEl.classList.add('has-data');
-            const record = userData.records[date];
             
-            // 计算盈亏
-            const goldChange = record.gold || 0;
-            const heartChange = record.heart_points || 0;
-            
-            totalGold += goldChange;
-            totalHeart += heartChange;
-            hasDataDays++;
-            
-            // 添加数据提示
-            const dataEl = document.createElement('div');
-            dataEl.className = 'day-data';
-            dataEl.innerHTML = `💰${goldChange > 0 ? '+' : ''}${goldChange}`;
-            dayEl.appendChild(dataEl);
+            // 计算当日盈亏
+            const profitLoss = calculateDailyProfitLoss(date);
+            if (profitLoss) {
+                // 计算盈亏
+                const goldChange = profitLoss.gold || 0;
+                const heartChange = profitLoss.heart_points || 0;
+                const couponsChange = profitLoss.highlight_coupons || 0;
+                const coinsChange = profitLoss.highlight_coins || 0;
+                const newHighlightChange = profitLoss.new_highlight || 0;
+                const returnHighlightChange = profitLoss.return_highlight || 0;
+                const exitHighlightChange = profitLoss.exit_highlight || 0;
+                
+                // 累加到本月总盈亏
+                totalGoldChange += goldChange;
+                totalHeartChange += heartChange;
+                totalCouponsChange += couponsChange;
+                totalCoinsChange += coinsChange;
+                totalNewHighlightChange += newHighlightChange;
+                totalReturnHighlightChange += returnHighlightChange;
+                totalExitHighlightChange += exitHighlightChange;
+                hasDataDays++;
+                
+                // 添加数据提示（显示金币盈亏）
+                const dataEl = document.createElement('div');
+                dataEl.className = 'day-data';
+                
+                let goldSymbol = '';
+                let goldClass = '';
+                if (goldChange > 0) {
+                    goldSymbol = `+${goldChange}`;
+                    goldClass = 'profit';
+                } else if (goldChange < 0) {
+                    goldSymbol = `${goldChange}`;
+                    goldClass = 'loss';
+                } else {
+                    goldSymbol = `0`;
+                }
+                
+                dataEl.innerHTML = `<span class="${goldClass}">💰${goldSymbol}</span>`;
+                dayEl.appendChild(dataEl);
+                
+                // 添加详情提示
+                const detailText = `金币: ${goldSymbol}\n` +
+                                 `心仪积分: ${heartChange >= 0 ? '+' : ''}${heartChange}\n` +
+                                 `高光券: ${couponsChange >= 0 ? '+' : ''}${couponsChange}\n` +
+                                 `新高光: ${newHighlightChange >= 0 ? '+' : ''}${newHighlightChange}\n` +
+                                 `返场高光: ${returnHighlightChange >= 0 ? '+' : ''}${returnHighlightChange}\n` +
+                                 `退场高光: ${exitHighlightChange >= 0 ? '+' : ''}${exitHighlightChange}\n` +
+                                 `高光币: ${coinsChange >= 0 ? '+' : ''}${coinsChange}`;
+                
+                dayEl.title = detailText;
+            }
         }
         
         const dayNumberEl = document.createElement('div');
@@ -390,10 +510,14 @@ function generateCalendar() {
     
     // 更新日历摘要
     summaryEl.innerHTML = `
-        <h3>${monthNames[month]} ${year} 统计</h3>
-        <p>本月有 ${hasDataDays} 天记录数据</p>
-        <p>金币累计：${totalGold >= 0 ? '+' : ''}${totalGold}</p>
-        <p>心仪积分累计：${totalHeart >= 0 ? '+' : ''}${totalHeart}</p>
+        <h3>${monthNames[month]} ${year} 日报表</h3>
+        <div class="summary-stats">
+            <p><i class="fas fa-calendar-check"></i> 有数据天数: <strong>${hasDataDays}</strong> 天</p>
+            <p><i class="fas fa-coins"></i> 本月金币盈亏: <strong class="${totalGoldChange >= 0 ? 'profit' : 'loss'}">${totalGoldChange >= 0 ? '+' : ''}${totalGoldChange}</strong></p>
+            <p><i class="fas fa-heart"></i> 本月心仪积分盈亏: <strong class="${totalHeartChange >= 0 ? 'profit' : 'loss'}">${totalHeartChange >= 0 ? '+' : ''}${totalHeartChange}</strong></p>
+            <p><i class="fas fa-ticket-alt"></i> 本月高光券盈亏: <strong class="${totalCouponsChange >= 0 ? 'profit' : 'loss'}">${totalCouponsChange >= 0 ? '+' : ''}${totalCouponsChange}</strong></p>
+            <p><i class="fas fa-money-bill-wave"></i> 本月高光币盈亏: <strong class="${totalCoinsChange >= 0 ? 'profit' : 'loss'}">${totalCoinsChange >= 0 ? '+' : ''}${totalCoinsChange}</strong></p>
+        </div>
     `;
 }
 
@@ -403,30 +527,88 @@ function updateStats() {
         userData.records = {};
     }
     
-    let totalGold = 0;
-    let totalHeart = 0;
-    let totalCoupons = 0;
-    let totalCoins = 0;
-    
     const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
     const currentMonth = today.getMonth();
     const currentYear = today.getFullYear();
     
-    // 只统计本月的
+    // 获取今日数据
+    let todayGold = 0;
+    let todayHeart = 0;
+    let todayCoupons = 0;
+    let todayCoins = 0;
+    let todayNewHighlight = 0;
+    let todayReturnHighlight = 0;
+    let todayExitHighlight = 0;
+    
+    if (userData.records[todayStr]) {
+        const todayRecord = userData.records[todayStr];
+        todayGold = todayRecord.gold || 0;
+        todayHeart = todayRecord.heart_points || 0;
+        todayCoupons = todayRecord.highlight_coupons || 0;
+        todayCoins = todayRecord.highlight_coins || 0;
+        todayNewHighlight = todayRecord.new_highlight || 0;
+        todayReturnHighlight = todayRecord.return_highlight || 0;
+        todayExitHighlight = todayRecord.exit_highlight || 0;
+    }
+    
+    // 计算本月盈亏
+    let monthGoldChange = 0;
+    let monthHeartChange = 0;
+    let monthCouponsChange = 0;
+    let monthCoinsChange = 0;
+    let monthNewHighlightChange = 0;
+    let monthReturnHighlightChange = 0;
+    let monthExitHighlightChange = 0;
+    
     for (const [date, record] of Object.entries(userData.records)) {
         const recordDate = new Date(date);
         if (recordDate.getMonth() === currentMonth && recordDate.getFullYear() === currentYear) {
-            totalGold += record.gold || 0;
-            totalHeart += record.heart_points || 0;
-            totalCoupons += record.highlight_coupons || 0;
-            totalCoins += record.highlight_coins || 0;
+            const profitLoss = calculateDailyProfitLoss(date);
+            if (profitLoss) {
+                monthGoldChange += profitLoss.gold || 0;
+                monthHeartChange += profitLoss.heart_points || 0;
+                monthCouponsChange += profitLoss.highlight_coupons || 0;
+                monthCoinsChange += profitLoss.highlight_coins || 0;
+                monthNewHighlightChange += profitLoss.new_highlight || 0;
+                monthReturnHighlightChange += profitLoss.return_highlight || 0;
+                monthExitHighlightChange += profitLoss.exit_highlight || 0;
+            }
         }
     }
     
-    document.getElementById('total-gold').textContent = totalGold;
-    document.getElementById('total-heart').textContent = totalHeart;
-    document.getElementById('total-coupons').textContent = totalCoupons;
-    document.getElementById('total-coins').textContent = totalCoins;
+    // 更新统计显示
+    updateStatCard('total-gold', 'gold-change', todayGold, monthGoldChange, 'fa-coins', '金币');
+    updateStatCard('total-heart', 'heart-change', todayHeart, monthHeartChange, 'fa-heart', '心仪积分');
+    updateStatCard('total-coupons', 'coupons-change', todayCoupons, monthCouponsChange, 'fa-ticket-alt', '高光券');
+    updateStatCard('total-coins', 'coins-change', todayCoins, monthCoinsChange, 'fa-money-bill-wave', '高光币');
+    updateStatCard('total-new-highlight', 'new-highlight-change', todayNewHighlight, monthNewHighlightChange, 'fa-user-plus', '新高光球员');
+    updateStatCard('total-return-highlight', 'return-highlight-change', todayReturnHighlight, monthReturnHighlightChange, 'fa-redo', '返场高光');
+    updateStatCard('total-exit-highlight', 'exit-highlight-change', todayExitHighlight, monthExitHighlightChange, 'fa-user-minus', '退场高光');
+}
+
+// 更新统计卡片
+function updateStatCard(totalId, changeId, todayValue, monthChange, iconClass, resourceName) {
+    // 更新总量
+    const totalElement = document.getElementById(totalId);
+    if (totalElement) {
+        totalElement.textContent = todayValue;
+        
+        // 移除旧的盈亏显示
+        const oldChange = totalElement.nextElementSibling;
+        if (oldChange && oldChange.classList.contains('change-value')) {
+            oldChange.remove();
+        }
+        
+        // 添加新的盈亏显示
+        if (monthChange !== 0) {
+            const changeElement = document.createElement('span');
+            changeElement.className = `change-value ${monthChange > 0 ? 'positive' : 'negative'}`;
+            changeElement.textContent = `${monthChange > 0 ? '+' : ''}${monthChange}`;
+            changeElement.title = `本月${resourceName}盈亏`;
+            totalElement.parentElement.appendChild(changeElement);
+        }
+    }
 }
 
 // 导出数据（用于备份）
@@ -486,7 +668,7 @@ function importData() {
     input.click();
 }
 
-// 管理员登录（从主界面添加链接）
+// 管理员登录
 function openAdmin() {
     const password = prompt('请输入管理员密码：');
     if (password === CONFIG.ADMIN_PASSWORD) {
