@@ -4,6 +4,35 @@ const CONFIG = {
     ADMIN_PASSWORD: '123456'  // 默认管理员密码
 };
 
+// 修改用户数据结构，添加备注和同步信息
+const DEFAULT_USER_DATA = {
+    username: '',
+    password: '',  // 加密存储
+    createdAt: '',
+    lastLogin: '',
+    syncInfo: {
+        lastSyncDate: '',
+        syncCountToday: 0,
+        githubUsername: '',  // 用户自己的GitHub账号（可选）
+        userGistId: ''       // 用户个人Gist ID（可选）
+    },
+    records: {}  // 日期 -> 数据
+};
+
+// 修改每日记录结构，添加备注
+const DEFAULT_DAILY_RECORD = {
+    gold: 0,
+    heart_points: 0,
+    highlight_coupons: 0,
+    new_highlight: 0,
+    return_highlight: 0,
+    exit_highlight: 0,
+    highlight_coins: 0,
+    note: '',      // 新增：备注
+    createdAt: '', // 记录创建时间
+    updatedAt: ''  // 记录更新时间
+};
+
 // 状态管理
 let currentUser = null;
 let currentDate = new Date().toISOString().split('T')[0];
