@@ -6,14 +6,72 @@
     <title>实况足球资源记录器</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
+    <!-- 隐私同意对话框 -->
+    <div id="privacy-agreement" class="modal-overlay active">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-exclamation-triangle"></i> 隐私协议与使用条款</h2>
+            </div>
+            <div class="modal-body">
+                <div class="privacy-warning full-width">
+                    <h3>重要隐私提示</h3>
+                    <p>在使用本工具前，请仔细阅读以下条款：</p>
+                    <ul>
+                        <li>🔒 <strong>数据存储位置</strong>：您的数据默认存储在浏览器本地，可选择同步到管理员GitHub仓库</li>
+                        <li>👁️ <strong>管理员权限</strong>：如果您选择同步到GitHub，管理员可以看到所有用户的数据</li>
+                        <li>🚫 <strong>请勿存储敏感信息</strong>：</li>
+                        <li class="warning-item">• 不要记录真实姓名、身份证号、电话号码</li>
+                        <li class="warning-item">• 不要记录住址、工作单位等个人信息</li>
+                        <li class="warning-item">• 不要记录银行卡号、密码等财务信息</li>
+                        <li>✅ <strong>安全使用建议</strong>：只记录游戏资源数据，定期导出备份</li>
+                    </ul>
+                    <div class="terms">
+                        <h4>使用条款：</h4>
+                        <p>1. 本工具完全免费，仅供学习交流使用</p>
+                        <p>2. 数据安全由用户自行负责，请定期备份</p>
+                        <p>3. 禁止使用本工具存储违法或侵权信息</p>
+                        <p>4. 管理员有权删除不当内容或违规用户</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <label class="checkbox-container">
+                    <input type="checkbox" id="agree-terms">
+                    <span class="checkmark"></span>
+                    我已阅读并同意以上条款
+                </label>
+                <div class="modal-buttons">
+                    <button onclick="disagreeTerms()" class="btn-secondary">不同意</button>
+                    <button onclick="agreeTerms()" class="btn-primary">同意并继续</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="container">
         <!-- 登录界面 -->
         <div id="login-section" class="section">
             <div class="login-container">
                 <h1><i class="fas fa-futbol"></i> 实况足球资源记录器</h1>
+                
+                <!-- 用户统计 -->
+                <div class="user-stats-banner">
+                    <div class="stat-item">
+                        <i class="fas fa-users"></i>
+                        <span>已注册用户：<strong id="total-users-count">0</strong>/100</span>
+                    </div>
+                    <div class="stat-item">
+                        <i class="fas fa-cloud"></i>
+                        <span>云端用户：<strong id="synced-users-count">0</strong></span>
+                    </div>
+                    <div class="stat-item">
+                        <i class="fas fa-calendar-day"></i>
+                        <span>今日活跃：<strong id="active-today-count">0</strong></span>
+                    </div>
+                </div>
+                
                 <div class="login-form">
                     <h2>用户登录</h2>
                     <div class="form-group">
@@ -24,6 +82,12 @@
                     </div>
                     <button onclick="login()">登录</button>
                     <button onclick="showRegister()" class="secondary">注册新账户</button>
+                    
+                    <!-- 快速提示 -->
+                    <div class="quick-tips">
+                        <p><i class="fas fa-lightbulb"></i> 提示：密码为6位数字，请勿使用常用密码</p>
+                        <p><i class="fas fa-exclamation-circle"></i> 首次使用请先注册账户</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -34,15 +98,48 @@
                 <h1><i class="fas fa-user-plus"></i> 注册新账户</h1>
                 <div class="login-form">
                     <h2>创建账户</h2>
+                    
+                    <!-- 用户数提示 -->
+                    <div class="user-limit-warning">
+                        <i class="fas fa-info-circle"></i>
+                        当前已注册 <span id="current-user-count">0</span>/100 用户
+                    </div>
+                    
                     <div class="form-group">
-                        <input type="text" id="reg-username" placeholder="用户名" required>
+                        <input type="text" id="reg-username" placeholder="用户名（英文、数字、下划线）" required>
+                        <div class="input-hint">用户名唯一，注册后不可修改</div>
                     </div>
                     <div class="form-group">
                         <input type="password" id="reg-password" placeholder="6位数字密码" pattern="\d{6}" required>
+                        <div class="input-hint">密码为6位纯数字，请妥善保管</div>
                     </div>
                     <div class="form-group">
                         <input type="password" id="reg-confirm" placeholder="确认密码" pattern="\d{6}" required>
                     </div>
+                    
+                    <!-- 存储方式选择 -->
+                    <div class="storage-option">
+                        <h3>数据存储方式：</h3>
+                        <div class="option-group">
+                            <label class="option-label">
+                                <input type="radio" name="storage" value="local" checked>
+                                <span class="option-content">
+                                    <i class="fas fa-laptop-house"></i>
+                                    <strong>仅本地存储</strong>
+                                    <small>数据仅保存在您的浏览器中，不会上传</small>
+                                </span>
+                            </label>
+                            <label class="option-label">
+                                <input type="radio" name="storage" value="github">
+                                <span class="option-content">
+                                    <i class="fab fa-github"></i>
+                                    <strong>GitHub云端同步</strong>
+                                    <small>每天限1次，数据存储在管理员GitHub</small>
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+                    
                     <button onclick="register()">注册</button>
                     <button onclick="showLogin()" class="secondary">返回登录</button>
                 </div>
@@ -53,14 +150,52 @@
         <div id="main-section" class="section hidden">
             <!-- 顶部导航 -->
             <div class="header">
-                <h1><i class="fas fa-futbol"></i> 资源记录器</h1>
+                <div class="header-left">
+                    <h1><i class="fas fa-futbol"></i> 资源记录器</h1>
+                    <div class="data-source-indicator">
+                        <span id="data-source-local" class="source-badge local">
+                            <i class="fas fa-desktop"></i> 本地数据
+                        </span>
+                        <span id="data-source-synced" class="source-badge synced hidden">
+                            <i class="fab fa-github"></i> 已同步
+                        </span>
+                        <span id="data-source-outdated" class="source-badge outdated hidden">
+                            <i class="fas fa-exclamation-circle"></i> 本地数据未同步
+                        </span>
+                    </div>
+                </div>
+                
+                <!-- 用户信息栏 -->
                 <div class="user-info">
-                    <span id="current-user"></span>
-                    <button onclick="importData()" class="btn-small btn-import"><i class="fas fa-upload"></i> 导入数据</button>
-                    <button onclick="exportData()" class="btn-small btn-export"><i class="fas fa-download"></i> 导出数据</button>
-                    <button onclick="showHelp()" class="btn-small btn-help"><i class="fas fa-question-circle"></i> 帮助</button>
-                    <button onclick="logout()" class="btn-small"><i class="fas fa-sign-out-alt"></i> 退出</button>
-                    <button onclick="openAdmin()" class="btn-small btn-admin"><i class="fas fa-user-shield"></i> 管理</button>
+                    <span id="current-user" class="username-display"></span>
+                    
+                    <!-- 用户数量显示 -->
+                    <span class="user-count-badge" title="已注册用户数">
+                        <i class="fas fa-users"></i>
+                        <span id="user-count">0</span>/100
+                    </span>
+                    
+                    <!-- 同步状态 -->
+                    <span id="sync-status" class="sync-status" title="同步状态">
+                        <i class="fas fa-sync"></i>
+                        <span id="sync-count">0</span>/1
+                    </span>
+                    
+                    <button onclick="exportData()" class="btn-small btn-export">
+                        <i class="fas fa-download"></i> 导出
+                    </button>
+                    <button onclick="importData()" class="btn-small btn-import">
+                        <i class="fas fa-upload"></i> 导入
+                    </button>
+                    <button onclick="syncToGitHub()" id="sync-button" class="btn-small btn-sync">
+                        <i class="fab fa-github"></i> 同步
+                    </button>
+                    <button onclick="logout()" class="btn-small">
+                        <i class="fas fa-sign-out-alt"></i> 退出
+                    </button>
+                    <button onclick="openAdmin()" class="btn-small btn-admin">
+                        <i class="fas fa-user-shield"></i> 管理
+                    </button>
                 </div>
             </div>
 
@@ -70,57 +205,91 @@
                 <input type="date" id="current-date" onchange="loadDateData()">
                 <button onclick="changeDate(1)"><i class="fas fa-chevron-right"></i></button>
                 <button onclick="setToday()" class="btn-primary">今天</button>
-                <button onclick="copyYesterday()" class="btn-secondary"><i class="fas fa-copy"></i> 导入昨日数据</button>
+                <button onclick="copyYesterday()" class="btn-secondary">
+                    <i class="fas fa-copy"></i> 导入昨日数据
+                </button>
+                <button onclick="showNoteHistory()" class="btn-secondary">
+                    <i class="fas fa-history"></i> 备注历史
+                </button>
             </div>
-
 
             <!-- 数据输入表单 -->
             <div class="data-form">
                 <h2><i class="fas fa-edit"></i> 今日数据录入</h2>
+                
+                <!-- 隐私警告 -->
+                <div class="privacy-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p>⚠️ 注意：数据将存储在管理员GitHub中，请勿存储任何敏感个人信息！</p>
+                </div>
+                
+                <div class="form-description">
+                    <p><i class="fas fa-info-circle"></i> 请输入今日结束时各项资源的总量，系统会自动计算盈亏。</p>
+                </div>
+                
                 <div class="resource-grid">
                     <div class="resource-item">
-                        <label><i class="fas fa-coins"></i> 金币</label>
+                        <label><i class="fas fa-coins"></i> 金币（总量）</label>
                         <input type="number" id="gold" min="0" value="0">
                     </div>
                     <div class="resource-item">
-                        <label><i class="fas fa-heart"></i> 心仪积分</label>
+                        <label><i class="fas fa-heart"></i> 心仪积分（总量）</label>
                         <input type="number" id="heart-points" min="0" value="0">
                     </div>
                     <div class="resource-item">
-                        <label><i class="fas fa-ticket-alt"></i> 高光券</label>
+                        <label><i class="fas fa-ticket-alt"></i> 高光券（总量）</label>
                         <input type="number" id="highlight-coupons" min="0" value="0">
                     </div>
                     <div class="resource-item">
-                        <label><i class="fas fa-user-plus"></i> 新高光球员</label>
+                        <label><i class="fas fa-user-plus"></i> 新高光球员（总量）</label>
                         <input type="number" id="new-highlight" min="0" value="0">
                     </div>
                     <div class="resource-item">
-                        <label><i class="fas fa-redo"></i> 返场高光</label>
+                        <label><i class="fas fa-redo"></i> 返场高光（总量）</label>
                         <input type="number" id="return-highlight" min="0" value="0">
                     </div>
                     <div class="resource-item">
-                        <label><i class="fas fa-user-minus"></i> 退场高光</label>
+                        <label><i class="fas fa-user-minus"></i> 退场高光（总量）</label>
                         <input type="number" id="exit-highlight" min="0" value="0">
                     </div>
                     <div class="resource-item">
-                        <label><i class="fas fa-money-bill-wave"></i> 高光币</label>
+                        <label><i class="fas fa-money-bill-wave"></i> 高光币（总量）</label>
                         <input type="number" id="highlight-coins" min="0" value="0">
                     </div>
+                    
+                    <!-- 备注输入 -->
+                    <div class="resource-item note-item">
+                        <label><i class="fas fa-sticky-note"></i> 今日备注</label>
+                        <textarea id="daily-note" 
+                                 placeholder="可填写：抽卡结果、重要活动、资源规划等（非必填）"
+                                 maxlength="200"></textarea>
+                        <div class="note-counter">
+                            <span id="note-chars">0</span>/200 字
+                        </div>
+                    </div>
                 </div>
+                
                 <div class="form-actions">
-                    <button onclick="saveData()" class="btn-save"><i class="fas fa-save"></i> 保存数据</button>
-                    <button onclick="resetForm()" class="btn-reset"><i class="fas fa-redo"></i> 重置</button>
+                    <button onclick="saveData()" class="btn-save">
+                        <i class="fas fa-save"></i> 保存今日总量
+                    </button>
+                    <button onclick="resetForm()" class="btn-reset">
+                        <i class="fas fa-redo"></i> 重置
+                    </button>
                 </div>
             </div>
-            
-            <!-- 日历视图 -->
+
+            <!-- 日历日报表 -->
             <div class="calendar-section">
-                <h2><i class="fas fa-calendar-alt"></i> 本月日历</h2>
+                <h2><i class="fas fa-chart-bar"></i> 本月日报表</h2>
+                <div class="section-description">
+                    <p><i class="fas fa-info-circle"></i> 点击日期查看详情，系统会自动计算每日盈亏</p>
+                </div>
                 <div id="calendar" class="calendar"></div>
                 <div id="calendar-summary" class="calendar-summary"></div>
             </div>
 
-           <!-- 统计概览 -->
+            <!-- 统计概览 -->
             <div class="stats-overview">
                 <h2><i class="fas fa-chart-line"></i> 今日总量与本月盈亏</h2>
                 <div class="stats-grid">
@@ -154,17 +323,57 @@
                     </div>
                 </div>
                 <p style="margin-top: 15px; color: #a0a0a0; font-size: 14px;">
-                    <i class="fas fa-info-circle"></i> 大数字为今日总量，小数字为本月累计盈亏
+                    <i class="fas fa-info-circle"></i> 大数字为今日总量，小数字为本月累计盈亏（自动计算）
                 </p>
             </div>
+        </div>
+    </div>
+
+    <!-- 帮助对话框 -->
+    <div id="help-dialog" class="modal-overlay">
+        <div class="modal-content help-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-question-circle"></i> 使用帮助</h2>
+                <button onclick="closeHelp()" class="close-btn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <!-- 帮助内容会被JavaScript动态填充 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 备注历史对话框 -->
+    <div id="note-history-dialog" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-history"></i> 备注历史</h2>
+                <button onclick="closeNoteHistory()" class="close-btn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div id="note-history-content">
+                    <!-- 备注历史会被JavaScript动态填充 -->
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div class="footer">
-    <p>实况足球资源记录器 v1.0 | 数据存储在您的浏览器本地</p>
-    <p class="help-text">
-        <i class="fas fa-question-circle"></i> 
-        提示：请定期通过"导出数据"按钮备份您的数据，防止数据丢失
-    </p>
-</div>
+        <p><i class="fas fa-futbol"></i> 实况足球资源记录器 v1.1 | 数据存储在您的浏览器本地</p>
+        <p class="help-text">
+            <i class="fas fa-lightbulb"></i> 
+            提示：请定期使用右上角"导出"功能备份数据，防止数据丢失。
+            按 <kbd>F1</kbd> 查看完整帮助文档。
+        </p>
+        <div class="quick-links">
+            <a href="javascript:void(0)" onclick="showHelp()">帮助文档</a> | 
+            <a href="javascript:void(0)" onclick="showPrivacyInfo()">隐私政策</a> | 
+            <a href="javascript:void(0)" onclick="showAbout()">关于我们</a>
+        </div>
+    </div>
 
     <script src="script.js"></script>
 </body>
