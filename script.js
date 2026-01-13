@@ -3,7 +3,7 @@ const CONFIG = {
     // 管理员GitHub配置（需要你填写）
     ADMIN_GITHUB: {
         USERNAME: 'Leo-66666666',           // 你的GitHub用户名
-        TOKEN: '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',              // 你的GitHub Personal Access Token
+        TOKEN: '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',              // 你的GitHub Personal Access Token
         GIST_ID: 'dc6328fd3c6af8f8e6ef3dee506fe57d'             // 存储所有用户数据的Gist ID
     },
     
