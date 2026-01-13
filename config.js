@@ -2,7 +2,7 @@
 const CONFIG = {
     // 管理员GitHub配置
     ADMIN_GITHUB: {
-        USERNAME: 'YOUR_GITHUB_USERNAME',  // 你的GitHub用户名
+        USERNAME: 'Leo-66666666',  // 你的GitHub用户名
         REPO: 'pes-resource-data',         // 数据仓库名
         BRANCH: 'main',
         TOKEN: 'YOUR_GITHUB_TOKEN',        // 你的GitHub Token
