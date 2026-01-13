@@ -1657,3 +1657,29 @@ function showPrivacyInfo() {
 function showAbout() {
     alert('关于实况足球资源记录器：\n\n版本：v1.1\n功能：记录游戏资源、计算盈亏、数据备份\n说明：完全免费，仅供学习交流使用\n作者：实况足球爱好者\n更新日期：2024年');
 }
+
+// 测试GitHub连接
+async function testGitHubConnection() {
+    console.log('=== 手动测试GitHub连接 ===');
+    
+    if (!githubSyncManager) {
+        alert('GitHub同步管理器未初始化');
+        return;
+    }
+    
+    try {
+        // 测试基本连接
+        const testResult = await githubSyncManager.testConnection();
+        console.log('连接测试结果:', testResult);
+        
+        // 测试Gist访问
+        const gistResult = await githubSyncManager.getAllUsersData();
+        console.log('Gist访问结果:', gistResult);
+        
+        alert(`测试结果:\n\n1. 连接测试: ${testResult.success ? '✓ 成功' : '✗ 失败'}\n   ${testResult.message}\n\n2. Gist访问: ${gistResult.success ? '✓ 成功' : '✗ 失败'}\n   ${gistResult.message || gistResult.error}`);
+        
+    } catch (error) {
+        console.error('测试失败:', error);
+        alert('测试失败: ' + error.message);
+    }
+}
