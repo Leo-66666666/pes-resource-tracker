@@ -56,6 +56,7 @@
                 <h1><i class="fas fa-futbol"></i> 资源记录器</h1>
                 <div class="user-info">
                     <span id="current-user"></span>
+                    <button onclick="exportData()" class="btn-small btn-export"><i class="fas fa-download"></i> 导出数据</button>
                     <button onclick="logout()" class="btn-small"><i class="fas fa-sign-out-alt"></i> 退出</button>
                     <button onclick="openAdmin()" class="btn-small btn-admin"><i class="fas fa-user-shield"></i> 管理</button>
                 </div>
@@ -156,8 +157,12 @@
             </div>
 
     <div class="footer">
-        <p>实况足球资源记录器 v1.0 | 数据存储在GitHub仓库中</p>
-    </div>
+    <p>实况足球资源记录器 v1.0 | 数据存储在您的浏览器本地</p>
+    <p class="help-text">
+        <i class="fas fa-question-circle"></i> 
+        提示：请定期通过"导出数据"按钮备份您的数据，防止数据丢失
+    </p>
+</div>
 
     <script src="script.js"></script>
 </body>
