@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub 同步设置</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <div class="section">
+            <div class="header">
+                <h1><i class="fab fa-github"></i> GitHub 云端同步设置</h1>
+                <button onclick="window.location.href='index.html'" class="btn-small">
+                    <i class="fas fa-arrow-left"></i> 返回主界面
+                </button>
+            </div>
+            
+            <!-- 隐私警告 -->
+            <div class="privacy-warning full-width">
+                <i class="fas fa-exclamation-triangle"></i>
+                <h3>重要隐私提示</h3>
+                <ul>
+                    <li>🔒 您的数据将存储在管理员的 GitHub 仓库中</li>
+                    <li>👁️ 管理员可以看到所有用户的数据</li>
+                    <li>🚫 请勿存储任何敏感个人信息：</li>
+                    <li class="warning-item">• 真实姓名、身份证号、电话号码</li>
+                    <li class="warning-item">• 住址、工作单位等个人信息</li>
+                    <li class="warning-item">• 银行卡号、密码等财务信息</li>
+                    <li>✅ 只记录游戏资源数据即可</li>
+                </ul>
+                <p>继续使用即表示您已阅读并同意以上隐私条款。</p>
+            </div>
+            
+            <div class="sync-options">
+                <h2><i class="fas fa-cloud"></i> 同步选项</h2>
+                
+                <div class="option-card">
+                    <h3><i class="fas fa-laptop-house"></i> 仅本地存储</h3>
+                    <p>数据仅保存在您的浏览器中，不会上传到任何地方。</p>
+                    <ul>
+                        <li>✅ 最高隐私保护</li>
+                        <li>✅ 无需网络连接</li>
+                        <li>❌ 换设备会丢失数据</li>
+                        <li>❌ 清除浏览器缓存会丢失数据</li>
+                    </ul>
+                    <button onclick="setSyncMode('local')" class="btn-option" id="local-btn">
+                        <i class="fas fa-check-circle"></i> 使用此模式
+                    </button>
+                </div>
+                
+                <div class="option-card">
+                    <h3><i class="fab fa-github"></i> GitHub 云端同步（推荐）</h3>
+                    <p>数据将同步到管理员的 GitHub 仓库，支持跨设备访问。</p>
+                    <ul>
+                        <li>✅ 跨设备同步</li>
+                        <li>✅ 数据永久保存</li>
+                        <li>✅ 每天自动备份</li>
+                        <li>⚠️ 管理员可查看数据</li>
+                        <li>⚠️ 每天限同步1次</li>
+                    </ul>
+                    <button onclick="setSyncMode('github')" class="btn-option" id="github-btn">
+                        <i class="fas fa-check-circle"></i> 使用此模式
+                    </button>
+                </div>
+                
+                <div class="option-card">
+                    <h3><i class="fas fa-user-secret"></i> 高级：使用自己的 GitHub</h3>
+                    <p>使用您自己的 GitHub 账号存储数据，管理员无法查看。</p>
+                    <div class="advanced-form" id="advanced-form">
+                        <div class="form-group">
+                            <label><i class="fab fa-github"></i> GitHub 用户名</label>
+                            <input type="text" id="github-username" placeholder="您的GitHub用户名">
+                        </div>
+                        <div class="form-group">
+                            <label><i class="fas fa-key"></i> Personal Access Token</label>
+                            <input type="password" id="github-token" 
+                                   placeholder="ghp_xxxxxxxxxxxxxxxxxxxx">
+                            <p class="help-text">
+                                <a href="https://github.com/settings/tokens" target="_blank">
+                                    <i class="fas fa-external-link-alt"></i> 如何获取Token？
+                                </a>
+                            </p>
+                        </div>
+                        <button onclick="saveAdvancedSettings()" class="btn-save">
+                            <i class="fas fa-save"></i> 保存高级设置
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 同步状态 -->
+            <div class="sync-status-panel">
+                <h2><i class="fas fa-chart-bar"></i> 当前同步状态</h2>
+                <div class="status-info">
+                    <p><strong>存储模式：</strong> <span id="current-mode">本地存储</span></p>
+                    <p><strong>今日已同步：</strong> <span id="syncs-today">0</span> 次</p>
+                    <p><strong>最后同步时间：</strong> <span id="last-sync">从未同步</span></p>
+                    <p><strong>总数据大小：</strong> <span id="data-size">0 KB</span></p>
+                </div>
+            </div>
+            
+            <div class="form-actions">
+                <button onclick="testConnection()" class="btn-test">
+                    <i class="fas fa-plug"></i> 测试连接
+                </button>
+                <button onclick="forceSync()" id="force-sync-btn" class="btn-sync" disabled>
+                    <i class="fas fa-sync-alt"></i> 立即同步
+                </button>
+                <button onclick="clearAllData()" class="btn-danger">
+                    <i class="fas fa-trash"></i> 清除所有数据
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 加载当前设置
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSyncSettings();
+        });
+        
+        function loadSyncSettings() {
+            const settings = JSON.parse(localStorage.getItem('pes_sync_settings') || '{}');
+            
+            document.getElementById('current-mode').textContent = 
+                settings.mode === 'github' ? 'GitHub云端同步' : '本地存储';
+            
+            if (settings.lastSync) {
+                document.getElementById('last-sync').textContent = 
+                    new Date(settings.lastSync).toLocaleString();
+            }
+            
+            // 更新按钮状态
+            updateOptionButtons(settings.mode || 'local');
+            
+            // 显示高级设置
+            if (settings.githubUsername) {
+                document.getElementById('github-username').value = settings.githubUsername;
+            }
+        }
+        
+        function setSyncMode(mode) {
+            const settings = JSON.parse(localStorage.getItem('pes_sync_settings') || '{}');
+            settings.mode = mode;
+            localStorage.setItem('pes_sync_settings', JSON.stringify(settings));
+            
+            updateOptionButtons(mode);
+            
+            alert(`已切换到${mode === 'github' ? 'GitHub云端同步' : '本地存储'}模式`);
+            window.location.reload();
+        }
+        
+        function updateOptionButtons(selectedMode) {
+            document.getElementById('local-btn').className = 
+                selectedMode === 'local' ? 'btn-option selected' : 'btn-option';
+            document.getElementById('github-btn').className = 
+                selectedMode === 'github' ? 'btn-option selected' : 'btn-option';
+        }
+        
+        function saveAdvancedSettings() {
+            const username = document.getElementById('github-username').value.trim();
+            const token = document.getElementById('github-token').value.trim();
+            
+            if (!username || !token) {
+                alert('请填写GitHub用户名和Token');
+                return;
+            }
+            
+            const settings = JSON.parse(localStorage.getItem('pes_sync_settings') || '{}');
+            settings.githubUsername = username;
+            settings.githubToken = token;
+            settings.mode = 'github';
+            localStorage.setItem('pes_sync_settings', JSON.stringify(settings));
+            
+            alert('高级设置已保存！');
+            updateOptionButtons('github');
+        }
+        
+        function testConnection() {
+            const settings = JSON.parse(localStorage.getItem('pes_sync_settings') || '{}');
+            
+            if (settings.mode === 'github') {
+                // 这里应该调用GitHub API测试连接
+                alert('GitHub连接测试功能将在主页面实现');
+            } else {
+                alert('当前为本地存储模式，无需连接测试');
+            }
+        }
+        
+        function forceSync() {
+            if (confirm('确定要立即同步所有数据到GitHub吗？')) {
+                alert('同步功能将在主页面实现');
+            }
+        }
+        
+        function clearAllData() {
+            if (confirm('警告：这将清除所有本地数据！确定要继续吗？')) {
+                localStorage.clear();
+                alert('所有数据已清除，页面将刷新');
+                window.location.reload();
+            }
+        }
+    </script>
+</body>
+</html>
