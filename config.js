@@ -5,8 +5,8 @@ const CONFIG = {
         USERNAME: 'Leo-66666666',  // 你的GitHub用户名
         REPO: 'pes-resource-data',         // 数据仓库名
         BRANCH: 'main',
-        TOKEN: 'YOUR_GITHUB_TOKEN',        // 你的GitHub Token
-        GIST_ID: 'YOUR_GIST_ID'            // 存储所有用户数据的Gist ID
+        TOKEN: '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',        // 你的GitHub Token
+        GIST_ID: 'dc6328fd3c6af8f8e6ef3dee506fe57d'            // 存储所有用户数据的Gist ID
     },
     
     // 应用配置
