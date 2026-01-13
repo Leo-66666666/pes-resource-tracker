@@ -1,61 +1,314 @@
 // 配置
 const CONFIG = {
-    MAX_USERS: 100,
-    ADMIN_PASSWORD: '123456'  // 默认管理员密码
-};
-
-// 修改用户数据结构，添加备注和同步信息
-const DEFAULT_USER_DATA = {
-    username: '',
-    password: '',  // 加密存储
-    createdAt: '',
-    lastLogin: '',
-    syncInfo: {
-        lastSyncDate: '',
-        syncCountToday: 0,
-        githubUsername: '',  // 用户自己的GitHub账号（可选）
-        userGistId: ''       // 用户个人Gist ID（可选）
+    // 管理员GitHub配置（需要你填写）
+    ADMIN_GITHUB: {
+        USERNAME: 'Leo-66666666',           // 你的GitHub用户名
+        TOKEN: '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',              // 你的GitHub Personal Access Token
+        GIST_ID: 'dc6328fd3c6af8f8e6ef3dee506fe57d'             // 存储所有用户数据的Gist ID
     },
-    records: {}  // 日期 -> 数据
-};
-
-// 修改每日记录结构，添加备注
-const DEFAULT_DAILY_RECORD = {
-    gold: 0,
-    heart_points: 0,
-    highlight_coupons: 0,
-    new_highlight: 0,
-    return_highlight: 0,
-    exit_highlight: 0,
-    highlight_coins: 0,
-    note: '',      // 新增：备注
-    createdAt: '', // 记录创建时间
-    updatedAt: ''  // 记录更新时间
+    
+    // 应用配置
+    MAX_USERS: 100,
+    ADMIN_PASSWORD: '114514',   // 管理员密码（实际是114514，提示是123456）
+    SYNC_LIMIT_PER_DAY: 1,      // 每天同步限制次数
+    PRIVACY_AGREED: 'privacy_agreed',  // 隐私协议同意标识
+    
+    // 隐私提示
+    PRIVACY_WARNING: "⚠️ 注意：数据将存储在管理员GitHub中，请勿存储任何敏感个人信息！"
 };
 
 // 状态管理
 let currentUser = null;
 let currentDate = new Date().toISOString().split('T')[0];
 let userData = {
+    username: '',
+    password: '',
+    createdAt: '',
+    lastLogin: '',
+    syncInfo: {
+        lastSyncDate: '',
+        syncCountToday: 0,
+        storageMode: 'local'  // 'local' 或 'github'
+    },
     records: {}
 };
 
-// 初始化本地存储数据
-function initializeLocalStorage() {
-    // 如果还没有用户列表，创建一个空的
-    if (!localStorage.getItem('pes_users')) {
-        localStorage.setItem('pes_users', JSON.stringify({
-            users: [],
-            lastUpdated: new Date().toISOString()
-        }));
+// GitHub API管理器
+class GitHubSyncManager {
+    constructor() {
+        this.config = CONFIG.ADMIN_GITHUB;
+        this.baseURL = 'https://api.github.com';
+    }
+    
+    // 获取所有用户数据
+    async getAllUsersData() {
+        try {
+            if (!this.config.TOKEN || !this.config.GIST_ID) {
+                throw new Error('GitHub配置不完整');
+            }
+            
+            const response = await fetch(`${this.baseURL}/gists/${this.config.GIST_ID}`, {
+                headers: {
+                    'Authorization': `token ${this.config.TOKEN}`,
+                    'Accept': 'application/vnd.github.v3+json'
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`GitHub API错误: ${response.status}`);
+            }
+            
+            const gist = await response.json();
+            const content = JSON.parse(gist.files['users.json'].content);
+            
+            return {
+                success: true,
+                data: content,
+                lastUpdated: gist.updated_at
+            };
+            
+        } catch (error) {
+            console.error('获取GitHub数据失败:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+    
+    // 更新用户数据到GitHub
+    async updateUserData(username, userData) {
+        try {
+            if (!this.config.TOKEN || !this.config.GIST_ID) {
+                throw new Error('GitHub配置不完整');
+            }
+            
+            // 先获取当前所有数据
+            const allDataResult = await this.getAllUsersData();
+            
+            if (!allDataResult.success) {
+                return allDataResult;
+            }
+            
+            const allData = allDataResult.data;
+            
+            // 更新或添加用户数据
+            allData.users = allData.users || {};
+            allData.users[username] = {
+                ...userData,
+                lastSync: new Date().toISOString()
+            };
+            
+            // 更新总用户数
+            allData.metadata = {
+                totalUsers: Object.keys(allData.users || {}).length,
+                lastUpdated: new Date().toISOString(),
+                maxUsers: CONFIG.MAX_USERS,
+                version: '1.1'
+            };
+            
+            // 更新到GitHub
+            const response = await fetch(`${this.baseURL}/gists/${this.config.GIST_ID}`, {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `token ${this.config.TOKEN}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/vnd.github.v3+json'
+                },
+                body: JSON.stringify({
+                    description: `实况足球资源记录 - ${new Date().toLocaleDateString('zh-CN')}`,
+                    files: {
+                        'users.json': {
+                            content: JSON.stringify(allData, null, 2)
+                        }
+                    }
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`更新失败: ${response.status} ${response.statusText}`);
+            }
+            
+            return {
+                success: true,
+                message: '数据同步成功',
+                userCount: Object.keys(allData.users || {}).length
+            };
+            
+        } catch (error) {
+            console.error('同步到GitHub失败:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+    
+    // 删除用户
+    async deleteUser(username) {
+        try {
+            if (!this.config.TOKEN || !this.config.GIST_ID) {
+                throw new Error('GitHub配置不完整');
+            }
+            
+            const allDataResult = await this.getAllUsersData();
+            
+            if (!allDataResult.success) {
+                return allDataResult;
+            }
+            
+            const allData = allDataResult.data;
+            
+            if (allData.users && allData.users[username]) {
+                delete allData.users[username];
+                
+                // 更新总用户数
+                allData.metadata = {
+                    ...allData.metadata,
+                    totalUsers: Object.keys(allData.users || {}).length,
+                    lastUpdated: new Date().toISOString()
+                };
+                
+                // 更新到GitHub
+                const response = await fetch(`${this.baseURL}/gists/${this.config.GIST_ID}`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': `token ${this.config.TOKEN}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        files: {
+                            'users.json': {
+                                content: JSON.stringify(allData, null, 2)
+                            }
+                        }
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`删除失败: ${response.status}`);
+                }
+                
+                return {
+                    success: true,
+                    message: '用户删除成功'
+                };
+            } else {
+                return {
+                    success: false,
+                    error: '用户不存在'
+                };
+            }
+            
+        } catch (error) {
+            console.error('删除用户失败:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
     }
 }
 
-// DOM加载完成后初始化
+// 初始化GitHub同步管理器
+let githubSyncManager = null;
+
+function initGitHubSync() {
+    if (CONFIG.ADMIN_GITHUB.TOKEN && CONFIG.ADMIN_GITHUB.GIST_ID) {
+        githubSyncManager = new GitHubSyncManager();
+        console.log('GitHub同步管理器已初始化');
+    } else {
+        console.warn('GitHub配置不完整，同步功能不可用');
+    }
+}
+
+// 初始化
 document.addEventListener('DOMContentLoaded', function() {
-    // 初始化本地存储
-    initializeLocalStorage();
+    // 检查隐私协议
+    const privacyAgreed = localStorage.getItem(CONFIG.PRIVACY_AGREED);
+    if (!privacyAgreed) {
+        document.getElementById('privacy-agreement').classList.add('active');
+    } else {
+        // 隐私协议已同意，继续初始化
+        continueInitialization();
+    }
     
+    // 备注字符计数
+    const noteTextarea = document.getElementById('daily-note');
+    if (noteTextarea) {
+        noteTextarea.addEventListener('input', function() {
+            const count = this.value.length;
+            document.getElementById('note-chars').textContent = count;
+        });
+    }
+    
+    // 初始化GitHub同步
+    initGitHubSync();
+    
+    // 加载用户统计数据
+    updateUserStats();
+    
+    // 键盘快捷键
+    document.addEventListener('keydown', function(event) {
+        // F1 打开帮助
+        if (event.key === 'F1') {
+            event.preventDefault();
+            showHelp();
+        }
+        
+        // Ctrl+S 保存数据
+        if (event.ctrlKey && event.key === 's') {
+            event.preventDefault();
+            if (currentUser) {
+                saveData();
+            }
+        }
+        
+        // Ctrl+Y 导入昨日数据
+        if (event.ctrlKey && event.key === 'y') {
+            event.preventDefault();
+            if (currentUser) {
+                copyYesterday();
+            }
+        }
+        
+        // Ctrl+T 跳转到今天
+        if (event.ctrlKey && event.key === 't') {
+            event.preventDefault();
+            setToday();
+        }
+        
+        // 左右箭头切换日期
+        if (event.key === 'ArrowLeft') {
+            event.preventDefault();
+            changeDate(-1);
+        }
+        if (event.key === 'ArrowRight') {
+            event.preventDefault();
+            changeDate(1);
+        }
+    });
+});
+
+// 隐私协议处理
+function agreeTerms() {
+    const agreeChecked = document.getElementById('agree-terms').checked;
+    if (!agreeChecked) {
+        alert('请先阅读并同意隐私协议');
+        return;
+    }
+    
+    localStorage.setItem(CONFIG.PRIVACY_AGREED, 'true');
+    document.getElementById('privacy-agreement').classList.remove('active');
+    continueInitialization();
+}
+
+function disagreeTerms() {
+    alert('您必须同意隐私协议才能使用本工具');
+    window.location.href = 'about:blank';
+}
+
+function continueInitialization() {
     // 设置今天日期
     document.getElementById('current-date').value = currentDate;
     
@@ -70,7 +323,44 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 初始化日历
     generateCalendar();
-});
+}
+
+// 更新用户统计数据
+async function updateUserStats() {
+    try {
+        // 获取本地用户
+        const usersData = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
+        const localUserCount = usersData.users.length;
+        
+        // 获取GitHub用户（如果配置了）
+        let githubUserCount = 0;
+        let activeTodayCount = 0;
+        
+        if (githubSyncManager) {
+            const result = await githubSyncManager.getAllUsersData();
+            if (result.success) {
+                githubUserCount = Object.keys(result.data.users || {}).length;
+                
+                // 计算今日活跃用户
+                const today = new Date().toDateString();
+                const users = result.data.users || {};
+                activeTodayCount = Object.values(users).filter(user => {
+                    const lastLogin = new Date(user.lastLogin || 0).toDateString();
+                    return lastLogin === today;
+                }).length;
+            }
+        }
+        
+        // 更新显示
+        document.getElementById('total-users-count').textContent = Math.max(localUserCount, githubUserCount);
+        document.getElementById('synced-users-count').textContent = githubUserCount;
+        document.getElementById('active-today-count').textContent = activeTodayCount;
+        document.getElementById('current-user-count').textContent = localUserCount;
+        
+    } catch (error) {
+        console.error('更新用户统计失败:', error);
+    }
+}
 
 // 显示登录界面
 function showLogin() {
@@ -84,6 +374,9 @@ function showRegister() {
     document.getElementById('login-section').classList.add('hidden');
     document.getElementById('register-section').classList.remove('hidden');
     document.getElementById('main-section').classList.add('hidden');
+    
+    // 更新当前用户数
+    updateUserStats();
 }
 
 // 显示主界面
@@ -127,11 +420,19 @@ async function login() {
         currentUser = username;
         userData = storedData;
         
+        // 更新最后登录时间
+        userData.lastLogin = new Date().toISOString();
+        localStorage.setItem(`pes_user_${currentUser}`, JSON.stringify(userData));
+        
         // 保存登录信息到本地存储
         localStorage.setItem('pes_current_user', username);
         
         // 显示用户信息
         document.getElementById('current-user').textContent = `用户: ${username}`;
+        
+        // 更新用户计数
+        const usersData = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
+        document.getElementById('user-count').textContent = `${usersData.users.length}`;
         
         // 显示主界面
         showMain();
@@ -141,6 +442,12 @@ async function login() {
         
         // 更新统计
         updateStats();
+        
+        // 更新同步状态
+        updateSyncStatus();
+        
+        // 更新用户统计数据
+        updateUserStats();
         
     } catch (error) {
         alert('登录失败：' + error.message);
@@ -152,9 +459,16 @@ async function register() {
     const username = document.getElementById('reg-username').value.trim();
     const password = document.getElementById('reg-password').value.trim();
     const confirm = document.getElementById('reg-confirm').value.trim();
+    const storageMode = document.querySelector('input[name="storage"]:checked').value;
     
     if (!username || !password || !confirm) {
         alert('请填写所有字段！');
+        return;
+    }
+    
+    // 用户名验证
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+        alert('用户名只能包含字母、数字和下划线！');
         return;
     }
     
@@ -170,13 +484,13 @@ async function register() {
     
     try {
         // 检查用户是否已存在
-        const users = JSON.parse(localStorage.getItem('pes_users')).users;
+        const users = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
         if (users.includes(username)) {
             throw new Error('用户名已存在！');
         }
         
         if (users.length >= CONFIG.MAX_USERS) {
-            throw new Error('用户数量已达上限！');
+            throw new Error(`用户数量已达上限 ${CONFIG.MAX_USERS} 人！`);
         }
         
         // 创建新用户数据
@@ -184,6 +498,12 @@ async function register() {
             username: username,
             password: password,
             createdAt: new Date().toISOString(),
+            lastLogin: new Date().toISOString(),
+            syncInfo: {
+                storageMode: storageMode,
+                lastSyncDate: '',
+                syncCountToday: 0
+            },
             records: {}
         };
         
@@ -191,7 +511,7 @@ async function register() {
         localStorage.setItem(`pes_user_${username}`, JSON.stringify(userRecord));
         
         // 更新用户列表
-        const usersData = JSON.parse(localStorage.getItem('pes_users'));
+        const usersData = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
         usersData.users.push(username);
         usersData.lastUpdated = new Date().toISOString();
         localStorage.setItem('pes_users', JSON.stringify(usersData));
@@ -201,6 +521,9 @@ async function register() {
         document.getElementById('username').value = username;
         document.getElementById('password').value = password;
         
+        // 更新用户统计数据
+        updateUserStats();
+        
     } catch (error) {
         alert('注册失败：' + error.message);
     }
@@ -209,9 +532,23 @@ async function register() {
 // 退出登录
 function logout() {
     currentUser = null;
-    userData = { records: {} };
+    userData = {
+        username: '',
+        password: '',
+        createdAt: '',
+        lastLogin: '',
+        syncInfo: {
+            lastSyncDate: '',
+            syncCountToday: 0,
+            storageMode: 'local'
+        },
+        records: {}
+    };
     localStorage.removeItem('pes_current_user');
     showLogin();
+    
+    // 更新用户统计数据
+    updateUserStats();
 }
 
 // 获取昨日数据
@@ -282,6 +619,8 @@ function loadDateData() {
         document.getElementById('return-highlight').value = record.return_highlight || 0;
         document.getElementById('exit-highlight').value = record.exit_highlight || 0;
         document.getElementById('highlight-coins').value = record.highlight_coins || 0;
+        document.getElementById('daily-note').value = record.note || '';
+        document.getElementById('note-chars').textContent = (record.note || '').length;
     } else {
         // 没有记录，清空表单
         resetForm();
@@ -299,6 +638,8 @@ async function saveData() {
     }
     
     const date = document.getElementById('current-date').value;
+    const note = document.getElementById('daily-note').value.trim();
+    
     const record = {
         gold: parseInt(document.getElementById('gold').value) || 0,
         heart_points: parseInt(document.getElementById('heart-points').value) || 0,
@@ -306,17 +647,44 @@ async function saveData() {
         new_highlight: parseInt(document.getElementById('new-highlight').value) || 0,
         return_highlight: parseInt(document.getElementById('return-highlight').value) || 0,
         exit_highlight: parseInt(document.getElementById('exit-highlight').value) || 0,
-        highlight_coins: parseInt(document.getElementById('highlight-coins').value) || 0
+        highlight_coins: parseInt(document.getElementById('highlight-coins').value) || 0,
+        note: note,
+        updatedAt: new Date().toISOString()
     };
+    
+    // 如果是新记录，添加创建时间
+    if (!userData.records || !userData.records[date]) {
+        record.createdAt = new Date().toISOString();
+    } else {
+        record.createdAt = userData.records[date].createdAt || new Date().toISOString();
+    }
     
     // 验证数据
     const yesterdayData = getYesterdayData(date);
+    let hasWarning = false;
+    let warningMessage = '警告：以下资源总量小于昨日：\n';
+    
+    const resourceNames = {
+        gold: '金币',
+        heart_points: '心仪积分',
+        highlight_coupons: '高光券',
+        new_highlight: '新高光球员',
+        return_highlight: '返场高光',
+        exit_highlight: '退场高光',
+        highlight_coins: '高光币'
+    };
+    
     for (const [key, value] of Object.entries(record)) {
-        if (key !== 'note' && value < yesterdayData[key]) {
-            if (!confirm(`警告：今日${getResourceChineseName(key)}总量(${value})小于昨日(${yesterdayData[key]})。确定要保存吗？`)) {
-                return;
-            }
+        if (['note', 'createdAt', 'updatedAt'].includes(key)) continue;
+        
+        if (value < yesterdayData[key]) {
+            hasWarning = true;
+            warningMessage += `• ${resourceNames[key]}: ${value} < ${yesterdayData[key]}\n`;
         }
+    }
+    
+    if (hasWarning && !confirm(warningMessage + '\n确定要保存吗？')) {
+        return;
     }
     
     // 保存到用户数据
@@ -328,13 +696,16 @@ async function saveData() {
     // 保存到localStorage
     localStorage.setItem(`pes_user_${currentUser}`, JSON.stringify(userData));
     
+    // 更新数据来源标识
+    updateDataSourceIndicator('local');
+    
     // 更新统计
     updateStats();
     
     // 更新日历显示
     generateCalendar();
     
-    alert('今日总量保存成功！系统会自动计算盈亏。');
+    alert('数据保存成功！' + (note ? `\n备注："${note.substring(0, 30)}${note.length > 30 ? '...' : ''}"` : ''));
 }
 
 // 获取资源中文名
@@ -360,6 +731,8 @@ function resetForm() {
     document.getElementById('return-highlight').value = 0;
     document.getElementById('exit-highlight').value = 0;
     document.getElementById('highlight-coins').value = 0;
+    document.getElementById('daily-note').value = '';
+    document.getElementById('note-chars').textContent = 0;
 }
 
 // 复制昨日数据
@@ -379,6 +752,8 @@ async function copyYesterday() {
         document.getElementById('return-highlight').value = yesterdayRecord.return_highlight || 0;
         document.getElementById('exit-highlight').value = yesterdayRecord.exit_highlight || 0;
         document.getElementById('highlight-coins').value = yesterdayRecord.highlight_coins || 0;
+        document.getElementById('daily-note').value = yesterdayRecord.note || '';
+        document.getElementById('note-chars').textContent = (yesterdayRecord.note || '').length;
         alert('昨日总量已导入！请修改为今日总量后保存。');
     } else {
         alert('找不到昨日的记录！');
@@ -453,6 +828,7 @@ function generateCalendar() {
     let totalReturnHighlightChange = 0;
     let totalExitHighlightChange = 0;
     let hasDataDays = 0;
+    let hasNoteDays = 0;
     
     for (let day = 1; day <= lastDay.getDate(); day++) {
         const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -467,6 +843,16 @@ function generateCalendar() {
         // 检查是否有数据
         if (userData.records && userData.records[date]) {
             dayEl.classList.add('has-data');
+            
+            // 检查是否有备注
+            const record = userData.records[date];
+            if (record.note && record.note.trim()) {
+                const noteIndicator = document.createElement('div');
+                noteIndicator.className = 'note-indicator';
+                noteIndicator.innerHTML = '<i class="fas fa-sticky-note"></i>';
+                dayEl.appendChild(noteIndicator);
+                hasNoteDays++;
+            }
             
             // 计算当日盈亏
             const profitLoss = calculateDailyProfitLoss(date);
@@ -510,13 +896,15 @@ function generateCalendar() {
                 dayEl.appendChild(dataEl);
                 
                 // 添加详情提示
-                const detailText = `金币: ${goldSymbol}\n` +
+                const detailText = `日期: ${date}\n` +
+                                 `金币: ${goldSymbol}\n` +
                                  `心仪积分: ${heartChange >= 0 ? '+' : ''}${heartChange}\n` +
                                  `高光券: ${couponsChange >= 0 ? '+' : ''}${couponsChange}\n` +
                                  `新高光: ${newHighlightChange >= 0 ? '+' : ''}${newHighlightChange}\n` +
                                  `返场高光: ${returnHighlightChange >= 0 ? '+' : ''}${returnHighlightChange}\n` +
                                  `退场高光: ${exitHighlightChange >= 0 ? '+' : ''}${exitHighlightChange}\n` +
-                                 `高光币: ${coinsChange >= 0 ? '+' : ''}${coinsChange}`;
+                                 `高光币: ${coinsChange >= 0 ? '+' : ''}${coinsChange}` +
+                                 (record.note ? `\n\n备注: ${record.note}` : '');
                 
                 dayEl.title = detailText;
             }
@@ -542,6 +930,7 @@ function generateCalendar() {
         <h3>${monthNames[month]} ${year} 日报表</h3>
         <div class="summary-stats">
             <p><i class="fas fa-calendar-check"></i> 有数据天数: <strong>${hasDataDays}</strong> 天</p>
+            <p><i class="fas fa-sticky-note"></i> 有备注天数: <strong>${hasNoteDays}</strong> 天</p>
             <p><i class="fas fa-coins"></i> 本月金币盈亏: <strong class="${totalGoldChange >= 0 ? 'profit' : 'loss'}">${totalGoldChange >= 0 ? '+' : ''}${totalGoldChange}</strong></p>
             <p><i class="fas fa-heart"></i> 本月心仪积分盈亏: <strong class="${totalHeartChange >= 0 ? 'profit' : 'loss'}">${totalHeartChange >= 0 ? '+' : ''}${totalHeartChange}</strong></p>
             <p><i class="fas fa-ticket-alt"></i> 本月高光券盈亏: <strong class="${totalCouponsChange >= 0 ? 'profit' : 'loss'}">${totalCouponsChange >= 0 ? '+' : ''}${totalCouponsChange}</strong></p>
@@ -640,6 +1029,142 @@ function updateStatCard(totalId, changeId, todayValue, monthChange, iconClass, r
     }
 }
 
+// 同步到GitHub
+async function syncToGitHub() {
+    if (!currentUser) {
+        alert('请先登录！');
+        return;
+    }
+    
+    if (!githubSyncManager) {
+        alert('GitHub同步功能未配置，请联系管理员！');
+        return;
+    }
+    
+    // 检查存储模式
+    if (userData.syncInfo.storageMode !== 'github') {
+        if (!confirm('您当前是本地存储模式，切换到GitHub同步模式吗？\n\n切换后数据将上传到管理员GitHub。')) {
+            return;
+        }
+        userData.syncInfo.storageMode = 'github';
+        localStorage.setItem(`pes_user_${currentUser}`, JSON.stringify(userData));
+    }
+    
+    // 检查同步限制
+    const syncInfo = userData.syncInfo || {};
+    const today = new Date().toDateString();
+    
+    if (syncInfo.lastSyncDate === today && syncInfo.syncCountToday >= CONFIG.SYNC_LIMIT_PER_DAY) {
+        alert(`今天已经同步过 ${CONFIG.SYNC_LIMIT_PER_DAY} 次了，请明天再试！`);
+        return;
+    }
+    
+    // 确认同步
+    if (!confirm(`⚠️ 数据将同步到管理员GitHub\n\n${CONFIG.PRIVACY_WARNING}\n\n确定要同步吗？`)) {
+        return;
+    }
+    
+    // 显示加载状态
+    const syncBtn = document.getElementById('sync-button');
+    const originalText = syncBtn.innerHTML;
+    const originalDisabled = syncBtn.disabled;
+    syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 同步中...';
+    syncBtn.disabled = true;
+    
+    try {
+        // 准备要同步的数据
+        const syncData = {
+            ...userData,
+            lastSync: new Date().toISOString()
+        };
+        
+        // 调用GitHub API
+        const result = await githubSyncManager.updateUserData(currentUser, syncData);
+        
+        if (result.success) {
+            // 更新本地同步信息
+            if (!userData.syncInfo) {
+                userData.syncInfo = {};
+            }
+            
+            if (syncInfo.lastSyncDate !== today) {
+                userData.syncInfo.syncCountToday = 1;
+            } else {
+                userData.syncInfo.syncCountToday = (syncInfo.syncCountToday || 0) + 1;
+            }
+            
+            userData.syncInfo.lastSyncDate = today;
+            userData.syncInfo.lastSyncTime = new Date().toISOString();
+            
+            // 保存到本地
+            localStorage.setItem(`pes_user_${currentUser}`, JSON.stringify(userData));
+            
+            // 更新界面
+            updateSyncStatus();
+            updateDataSourceIndicator('synced');
+            
+            alert(`✅ 同步成功！\n\n• 总用户数: ${result.userCount}/${CONFIG.MAX_USERS}\n• 今日剩余同步次数: ${CONFIG.SYNC_LIMIT_PER_DAY - userData.syncInfo.syncCountToday}\n\n数据已安全存储在云端！`);
+            
+            // 更新用户统计数据
+            updateUserStats();
+            
+        } else {
+            throw new Error(result.error);
+        }
+        
+    } catch (error) {
+        console.error('同步失败:', error);
+        alert(`❌ 同步失败: ${error.message}\n\n数据已保存在本地，请稍后重试。`);
+        
+        updateDataSourceIndicator('local');
+        
+    } finally {
+        // 恢复按钮状态
+        syncBtn.innerHTML = originalText;
+        syncBtn.disabled = originalDisabled;
+    }
+}
+
+// 更新同步状态显示
+function updateSyncStatus() {
+    if (!currentUser) return;
+    
+    const syncInfo = userData.syncInfo || {};
+    const today = new Date().toDateString();
+    
+    const syncCountElement = document.getElementById('sync-count');
+    const syncStatusElement = document.getElementById('sync-status');
+    
+    if (syncCountElement) {
+        syncCountElement.textContent = syncInfo.syncCountToday || 0;
+    }
+    
+    if (syncStatusElement) {
+        if (syncInfo.lastSyncDate === today && syncInfo.syncCountToday >= CONFIG.SYNC_LIMIT_PER_DAY) {
+            syncStatusElement.className = 'sync-status limit-reached';
+            syncStatusElement.title = '今日同步次数已用完';
+        } else {
+            syncStatusElement.className = 'sync-status';
+            syncStatusElement.title = `今日已同步: ${syncInfo.syncCountToday || 0}/${CONFIG.SYNC_LIMIT_PER_DAY}`;
+        }
+    }
+}
+
+// 更新数据来源指示器
+function updateDataSourceIndicator(source) {
+    document.getElementById('data-source-local').classList.add('hidden');
+    document.getElementById('data-source-synced').classList.add('hidden');
+    document.getElementById('data-source-outdated').classList.add('hidden');
+    
+    if (source === 'local') {
+        document.getElementById('data-source-local').classList.remove('hidden');
+    } else if (source === 'synced') {
+        document.getElementById('data-source-synced').classList.remove('hidden');
+    } else if (source === 'outdated') {
+        document.getElementById('data-source-outdated').classList.remove('hidden');
+    }
+}
+
 // 导出数据（用于备份）
 function exportData() {
     if (!currentUser) {
@@ -656,6 +1181,8 @@ function exportData() {
     linkElement.setAttribute('href', dataUri);
     linkElement.setAttribute('download', exportFileDefaultName);
     linkElement.click();
+    
+    alert('数据导出成功！文件名：' + exportFileDefaultName);
 }
 
 // 导入数据（从备份恢复）
@@ -665,29 +1192,68 @@ function importData() {
         return;
     }
     
+    if (!confirm('警告：导入数据会覆盖当前所有记录！\n\n请确认：\n1. 您已经备份了当前数据\n2. 导入的是正确的备份文件\n\n确定要继续吗？')) {
+        return;
+    }
+    
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json';
     
     input.onchange = function(event) {
         const file = event.target.files[0];
+        if (!file) return;
+        
         const reader = new FileReader();
         
         reader.onload = function(e) {
             try {
                 const importedData = JSON.parse(e.target.result);
-                if (importedData.username === currentUser) {
+                
+                // 验证数据格式
+                if (!importedData.username || !importedData.records) {
+                    throw new Error('文件格式错误：不是有效的备份文件');
+                }
+                
+                // 验证用户名匹配
+                if (importedData.username !== currentUser) {
+                    if (!confirm(`备份文件用户名为：${importedData.username}\n当前登录用户为：${currentUser}\n\n用户名不匹配！确定要强制导入吗？`)) {
+                        return;
+                    }
+                }
+                
+                // 显示导入详情
+                const recordCount = Object.keys(importedData.records || {}).length;
+                const dates = Object.keys(importedData.records || {}).sort();
+                const firstDate = dates[0] || '无';
+                const lastDate = dates[dates.length - 1] || '无';
+                
+                const confirmMsg = `即将导入：\n` +
+                                 `• 用户：${importedData.username}\n` +
+                                 `• 记录数：${recordCount} 条\n` +
+                                 `• 时间范围：${firstDate} 至 ${lastDate}\n\n` +
+                                 `导入后将完全替换当前数据，无法撤销！\n确定要导入吗？`;
+                
+                if (confirm(confirmMsg)) {
                     userData = importedData;
                     localStorage.setItem(`pes_user_${currentUser}`, JSON.stringify(userData));
-                    alert('数据导入成功！');
+                    
+                    alert(`数据导入成功！\n已导入 ${recordCount} 条记录。`);
+                    
+                    // 刷新界面
                     loadDateData();
                     updateStats();
                     generateCalendar();
-                } else {
-                    alert('数据用户不匹配！');
+                    updateSyncStatus();
+                    
+                    // 显示导入完成提示
+                    setTimeout(() => {
+                        alert('导入完成！建议您立即导出一次数据作为备份。');
+                    }, 500);
                 }
+                
             } catch (error) {
-                alert('导入失败：文件格式错误！');
+                alert('导入失败：' + error.message + '\n\n请确保选择的是正确的JSON备份文件。');
             }
         };
         
@@ -697,12 +1263,170 @@ function importData() {
     input.click();
 }
 
+// 显示备注历史
+function showNoteHistory() {
+    if (!currentUser) {
+        alert('请先登录！');
+        return;
+    }
+    
+    const historyContent = document.getElementById('note-history-content');
+    historyContent.innerHTML = '';
+    
+    if (!userData.records || Object.keys(userData.records).length === 0) {
+        historyContent.innerHTML = '<p style="text-align: center; color: #a0a0a0;">暂无备注记录</p>';
+    } else {
+        // 获取有备注的记录并按日期倒序排序
+        const notes = [];
+        for (const [date, record] of Object.entries(userData.records)) {
+            if (record.note && record.note.trim()) {
+                notes.push({
+                    date: date,
+                    note: record.note,
+                    createdAt: record.createdAt
+                });
+            }
+        }
+        
+        // 按日期倒序排序
+        notes.sort((a, b) => new Date(b.date) - new Date(a.date));
+        
+        if (notes.length === 0) {
+            historyContent.innerHTML = '<p style="text-align: center; color: #a0a0a0;">暂无备注记录</p>';
+        } else {
+            notes.forEach(item => {
+                const noteElement = document.createElement('div');
+                noteElement.className = 'note-history-item';
+                noteElement.innerHTML = `
+                    <div class="note-history-date">
+                        <span>${item.date}</span>
+                        <small>${item.createdAt ? new Date(item.createdAt).toLocaleDateString('zh-CN') : ''}</small>
+                    </div>
+                    <div class="note-history-content">
+                        ${item.note.replace(/\n/g, '<br>')}
+                    </div>
+                `;
+                historyContent.appendChild(noteElement);
+            });
+        }
+    }
+    
+    document.getElementById('note-history-dialog').classList.add('active');
+}
+
+function closeNoteHistory() {
+    document.getElementById('note-history-dialog').classList.remove('active');
+}
+
 // 管理员登录
 function openAdmin() {
     const password = prompt('请输入管理员密码：');
     if (password === CONFIG.ADMIN_PASSWORD) {
         window.open('admin.html', '_blank');
     } else {
-        alert('密码错误！');
+        alert('密码错误！提示：123456');
     }
+}
+
+// 显示帮助
+function showHelp() {
+    const helpContent = document.querySelector('.help-content .modal-body');
+    helpContent.innerHTML = `
+        <div class="help-sections">
+            <div class="help-section">
+                <h3><i class="fas fa-play-circle"></i> 基本使用</h3>
+                <ol class="help-list steps">
+                    <li><strong>注册账户</strong>：首次使用请注册，用户名唯一，密码为6位数字</li>
+                    <li><strong>登录</strong>：使用注册的用户名和密码登录</li>
+                    <li><strong>记录数据</strong>：每天结束时填写各项资源的总量</li>
+                    <li><strong>保存数据</strong>：点击"保存今日总量"按钮</li>
+                    <li><strong>查看统计</strong>：系统自动计算每日盈亏和本月累计</li>
+                </ol>
+            </div>
+            
+            <div class="help-section">
+                <h3><i class="fas fa-database"></i> 数据管理</h3>
+                <h4>导出数据（备份）</h4>
+                <ol class="help-list steps">
+                    <li>点击右上角<strong>"导出"</strong>按钮（绿色）</li>
+                    <li>浏览器会自动下载备份文件：<code>pes_data_用户名_日期.json</code></li>
+                    <li>将此文件保存到安全位置</li>
+                </ol>
+                
+                <h4>导入数据（恢复）</h4>
+                <ol class="help-list steps">
+                    <li>点击右上角<strong>"导入"</strong>按钮（蓝色）</li>
+                    <li>选择之前导出的JSON文件</li>
+                    <li>系统会提示确认，确认后会覆盖当前数据</li>
+                </ol>
+                
+                <h4>GitHub同步</h4>
+                <ol class="help-list steps">
+                    <li>点击右上角<strong>"同步"</strong>按钮（深绿色）</li>
+                    <li>每天限同步1次</li>
+                    <li>数据将存储在管理员GitHub仓库中</li>
+                </ol>
+                
+                <div class="warning">
+                    <p><i class="fas fa-exclamation-triangle"></i> <strong>警告：</strong>导入数据会覆盖当前的所有记录，请谨慎操作！</p>
+                </div>
+            </div>
+            
+            <div class="help-section">
+                <h3><i class="fas fa-star"></i> 主要功能</h3>
+                <ul class="help-list">
+                    <li><strong>今日数据录入</strong>：记录每日结束时各项资源的总量</li>
+                    <li><strong>导入昨日数据</strong>：一键复制昨天总量，只需修改变化部分</li>
+                    <li><strong>备注功能</strong>：可为每天记录添加备注</li>
+                    <li><strong>本月日报表</strong>：日历视图显示每日盈亏，点击日期查看详情</li>
+                    <li><strong>统计概览</strong>：显示今日总量和本月累计盈亏</li>
+                </ul>
+            </div>
+            
+            <div class="help-section">
+                <h3><i class="fas fa-keyboard"></i> 快捷键</h3>
+                <ul class="help-list">
+                    <li><span class="shortcut">F1</span> - 打开帮助</li>
+                    <li><span class="shortcut">Ctrl + S</span> - 保存数据</li>
+                    <li><span class="shortcut">Ctrl + Y</span> - 导入昨日数据</li>
+                    <li><span class="shortcut">Ctrl + T</span> - 跳转到今天</li>
+                    <li><span class="shortcut">← →</span> - 切换日期</li>
+                </ul>
+            </div>
+            
+            <div class="help-section">
+                <h3><i class="fas fa-life-ring"></i> 常见问题</h3>
+                
+                <h4>Q1: 数据存在哪里？会丢失吗？</h4>
+                <p>数据默认存储在您的浏览器本地。如果您清除浏览器数据或更换设备，数据会丢失。请定期使用"导出"功能备份。</p>
+                
+                <h4>Q2: 如何在不同设备间同步数据？</h4>
+                <p>1. 在旧设备上"导出数据"<br>2. 将备份文件传输到新设备<br>3. 在新设备上"导入数据"</p>
+                
+                <h4>Q3: 密码忘记了怎么办？</h4>
+                <p>目前无法找回密码。建议您妥善保管密码。</p>
+                
+                <h4>Q4: 为什么我的数据显示红色负数？</h4>
+                <p>红色表示当日总量比前一日减少。请检查数据是否正确，如果确实减少了，这是正常的。</p>
+                
+                <h4>Q5: 管理员功能有什么作用？</h4>
+                <p>管理员可以查看所有用户数据、删除用户、导出全部数据。密码请询问系统管理员。</p>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('help-dialog').classList.add('active');
+}
+
+function closeHelp() {
+    document.getElementById('help-dialog').classList.remove('active');
+}
+
+// 隐私信息和关于我们
+function showPrivacyInfo() {
+    alert('隐私政策：\n\n1. 数据默认存储在浏览器本地\n2. 选择GitHub同步后，数据将存储在管理员GitHub仓库\n3. 管理员可以看到GitHub上的所有用户数据\n4. 请勿存储任何敏感个人信息\n5. 建议定期导出数据备份');
+}
+
+function showAbout() {
+    alert('关于实况足球资源记录器：\n\n版本：v1.1\n功能：记录游戏资源、计算盈亏、数据备份\n说明：完全免费，仅供学习交流使用\n作者：实况足球爱好者\n更新日期：2024年');
 }
