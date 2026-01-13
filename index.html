@@ -117,30 +117,43 @@
                 <div id="calendar-summary" class="calendar-summary"></div>
             </div>
 
-            <!-- 统计概览 -->
+           <!-- 统计概览 -->
             <div class="stats-overview">
-                <h2><i class="fas fa-chart-line"></i> 本月统计</h2>
+                <h2><i class="fas fa-chart-line"></i> 今日总量与本月盈亏</h2>
                 <div class="stats-grid">
                     <div class="stat-card">
-                        <h3>金币总量</h3>
-                        <p id="total-gold">0</p>
+                        <h3><i class="fas fa-coins"></i> 金币</h3>
+                        <p id="total-gold" class="total-value">0</p>
                     </div>
                     <div class="stat-card">
-                        <h3>心仪积分</h3>
-                        <p id="total-heart">0</p>
+                        <h3><i class="fas fa-heart"></i> 心仪积分</h3>
+                        <p id="total-heart" class="total-value">0</p>
                     </div>
                     <div class="stat-card">
-                        <h3>高光券</h3>
-                        <p id="total-coupons">0</p>
+                        <h3><i class="fas fa-ticket-alt"></i> 高光券</h3>
+                        <p id="total-coupons" class="total-value">0</p>
                     </div>
                     <div class="stat-card">
-                        <h3>高光币</h3>
-                        <p id="total-coins">0</p>
+                        <h3><i class="fas fa-money-bill-wave"></i> 高光币</h3>
+                        <p id="total-coins" class="total-value">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3><i class="fas fa-user-plus"></i> 新高光球员</h3>
+                        <p id="total-new-highlight" class="total-value">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3><i class="fas fa-redo"></i> 返场高光</h3>
+                        <p id="total-return-highlight" class="total-value">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3><i class="fas fa-user-minus"></i> 退场高光</h3>
+                        <p id="total-exit-highlight" class="total-value">0</p>
                     </div>
                 </div>
+                <p style="margin-top: 15px; color: #a0a0a0; font-size: 14px;">
+                    <i class="fas fa-info-circle"></i> 大数字为今日总量，小数字为本月累计盈亏
+                </p>
             </div>
-        </div>
-    </div>
 
     <div class="footer">
         <p>实况足球资源记录器 v1.0 | 数据存储在GitHub仓库中</p>
