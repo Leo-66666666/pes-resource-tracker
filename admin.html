@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理员界面 - 实况足球资源记录器</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <div class="section">
+            <div class="header">
+                <h1><i class="fas fa-user-shield"></i> 管理员界面</h1>
+                <button onclick="window.location.href='index.html'" class="btn-small">
+                    <i class="fas fa-arrow-left"></i> 返回主界面
+                </button>
+            </div>
+            
+            <!-- 管理员验证 -->
+            <div id="admin-login" class="login-form">
+                <h2>管理员验证</h2>
+                <div class="form-group">
+                    <input type="password" id="admin-password" placeholder="输入管理员密码" required>
+                </div>
+                <button onclick="adminLogin()">验证</button>
+                <p class="hint">默认管理员密码：123456</p>
+            </div>
+            
+            <!-- 管理界面 -->
+            <div id="admin-interface" class="hidden">
+                <div class="stats-overview">
+                    <h2><i class="fas fa-chart-bar"></i> 系统概览</h2>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <h3>总用户数</h3>
+                            <p id="total-users">0</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>数据总大小</h3>
+                            <p id="data-size">0 KB</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>最后更新</h3>
+                            <p id="last-update">-</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="data-form">
+                    <h2><i class="fas fa-users"></i> 用户管理</h2>
+                    <div id="users-list" class="resource-grid"></div>
+                    <div class="form-actions">
+                        <button onclick="exportAllData()" class="btn-primary">
+                            <i class="fas fa-download"></i> 导出所有数据
+                        </button>
+                        <button onclick="clearAllData()" class="btn-reset">
+                            <i class="fas fa-trash"></i> 清除所有数据（谨慎！）
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const ADMIN_PASSWORD = '123456'; // 默认管理员密码
+        
+        // 管理员登录
+        function adminLogin() {
+            const password = document.getElementById('admin-password').value;
+            
+            if (password === ADMIN_PASSWORD) {
+                document.getElementById('admin-login').classList.add('hidden');
+                document.getElementById('admin-interface').classList.remove('hidden');
+                loadAdminData();
+            } else {
+                alert('密码错误！');
+            }
+        }
+        
+        // 加载管理员数据
+        function loadAdminData() {
+            // 获取所有用户
+            const users = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
+            const usersList = document.getElementById('users-list');
+            usersList.innerHTML = '';
+            
+            // 显示用户列表
+            users.users.forEach(username => {
+                const userData = JSON.parse(localStorage.getItem(`pes_user_${username}`) || '{}');
+                const userEl = document.createElement('div');
+                userEl.className = 'resource-item';
+                userEl.innerHTML = `
+                    <label><i class="fas fa-user"></i> ${username}</label>
+                    <div class="user-controls">
+                        <p>注册时间: ${userData.createdAt ? new Date(userData.createdAt).toLocaleDateString() : '未知'}</p>
+                        <p>记录数: ${userData.records ? Object.keys(userData.records).length : 0}</p>
+                        <button onclick="deleteUser('${username}')" class="btn-small">
+                            <i class="fas fa-trash"></i> 删除
+                        </button>
+                    </div>
+                `;
+                usersList.appendChild(userEl);
+            });
+            
+            // 更新统计
+            document.getElementById('total-users').textContent = users.users.length;
+            
+            // 计算数据大小
+            let totalSize = 0;
+            users.users.forEach(username => {
+                const data = localStorage.getItem(`pes_user_${username}`);
+                if (data) totalSize += new Blob([data]).size;
+            });
+            document.getElementById('data-size').textContent = Math.round(totalSize / 1024) + ' KB';
+            
+            // 更新最后更新时间
+            document.getElementById('last-update').textContent = new Date().toLocaleString();
+        }
+        
+        // 删除用户
+        function deleteUser(username) {
+            if (confirm(`确定要删除用户 ${username} 吗？此操作不可恢复！`)) {
+                localStorage.removeItem(`pes_user_${username}`);
+                
+                // 从用户列表中移除
+                const users = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
+                users.users = users.users.filter(u => u !== username);
+                localStorage.setItem('pes_users', JSON.stringify(users));
+                
+                alert('用户已删除！');
+                loadAdminData();
+            }
+        }
+        
+        // 导出所有数据
+        function exportAllData() {
+            const users = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
+            const allData = {};
+            
+            users.users.forEach(username => {
+                allData[username] = JSON.parse(localStorage.getItem(`pes_user_${username}`) || '{}');
+            });
+            
+            const dataStr = JSON.stringify(allData, null, 2);
+            const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+            
+            const linkElement = document.createElement('a');
+            linkElement.setAttribute('href', dataUri);
+            linkElement.setAttribute('download', `pes_all_data_${new Date().toISOString().split('T')[0]}.json`);
+            linkElement.click();
+        }
+        
+        // 清除所有数据（谨慎使用！）
+        function clearAllData() {
+            if (confirm('警告：这将清除所有用户数据！此操作不可恢复！确定要继续吗？')) {
+                const prefix = 'pes_';
+                const keysToRemove = [];
+                
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key.startsWith(prefix)) {
+                        keysToRemove.push(key);
+                    }
+                }
+                
+                keysToRemove.forEach(key => {
+                    localStorage.removeItem(key);
+                });
+                
+                alert('所有数据已清除！');
+                loadAdminData();
+            }
+        }
+    </script>
+</body>
+</html>

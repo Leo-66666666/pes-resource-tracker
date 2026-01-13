@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>实况足球资源记录器</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 登录界面 -->
+        <div id="login-section" class="section">
+            <div class="login-container">
+                <h1><i class="fas fa-futbol"></i> 实况足球资源记录器</h1>
+                <div class="login-form">
+                    <h2>用户登录</h2>
+                    <div class="form-group">
+                        <input type="text" id="username" placeholder="用户名" required>
+                    </div>
+                    <div class="form-group">
+                        <input type="password" id="password" placeholder="6位数字密码" pattern="\d{6}" required>
+                    </div>
+                    <button onclick="login()">登录</button>
+                    <button onclick="showRegister()" class="secondary">注册新账户</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 注册界面 -->
+        <div id="register-section" class="section hidden">
+            <div class="login-container">
+                <h1><i class="fas fa-user-plus"></i> 注册新账户</h1>
+                <div class="login-form">
+                    <h2>创建账户</h2>
+                    <div class="form-group">
+                        <input type="text" id="reg-username" placeholder="用户名" required>
+                    </div>
+                    <div class="form-group">
+                        <input type="password" id="reg-password" placeholder="6位数字密码" pattern="\d{6}" required>
+                    </div>
+                    <div class="form-group">
+                        <input type="password" id="reg-confirm" placeholder="确认密码" pattern="\d{6}" required>
+                    </div>
+                    <button onclick="register()">注册</button>
+                    <button onclick="showLogin()" class="secondary">返回登录</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主界面 -->
+        <div id="main-section" class="section hidden">
+            <!-- 顶部导航 -->
+            <div class="header">
+                <h1><i class="fas fa-futbol"></i> 资源记录器</h1>
+                <div class="user-info">
+                    <span id="current-user"></span>
+                    <button onclick="logout()" class="btn-small"><i class="fas fa-sign-out-alt"></i> 退出</button>
+                </div>
+            </div>
+
+            <!-- 日期选择器 -->
+            <div class="date-picker">
+                <button onclick="changeDate(-1)"><i class="fas fa-chevron-left"></i></button>
+                <input type="date" id="current-date" onchange="loadDateData()">
+                <button onclick="changeDate(1)"><i class="fas fa-chevron-right"></i></button>
+                <button onclick="setToday()" class="btn-primary">今天</button>
+                <button onclick="copyYesterday()" class="btn-secondary"><i class="fas fa-copy"></i> 导入昨日数据</button>
+            </div>
+
+            <!-- 日历视图 -->
+            <div class="calendar-section">
+                <h2><i class="fas fa-calendar-alt"></i> 本月日历</h2>
+                <div id="calendar" class="calendar"></div>
+                <div id="calendar-summary" class="calendar-summary"></div>
+            </div>
+
+            <!-- 数据输入表单 -->
+            <div class="data-form">
+                <h2><i class="fas fa-edit"></i> 今日数据录入</h2>
+                <div class="resource-grid">
+                    <div class="resource-item">
+                        <label><i class="fas fa-coins"></i> 金币</label>
+                        <input type="number" id="gold" min="0" value="0">
+                    </div>
+                    <div class="resource-item">
+                        <label><i class="fas fa-heart"></i> 心仪积分</label>
+                        <input type="number" id="heart-points" min="0" value="0">
+                    </div>
+                    <div class="resource-item">
+                        <label><i class="fas fa-ticket-alt"></i> 高光券</label>
+                        <input type="number" id="highlight-coupons" min="0" value="0">
+                    </div>
+                    <div class="resource-item">
+                        <label><i class="fas fa-user-plus"></i> 新高光球员</label>
+                        <input type="number" id="new-highlight" min="0" value="0">
+                    </div>
+                    <div class="resource-item">
+                        <label><i class="fas fa-redo"></i> 返场高光</label>
+                        <input type="number" id="return-highlight" min="0" value="0">
+                    </div>
+                    <div class="resource-item">
+                        <label><i class="fas fa-user-minus"></i> 退场高光</label>
+                        <input type="number" id="exit-highlight" min="0" value="0">
+                    </div>
+                    <div class="resource-item">
+                        <label><i class="fas fa-money-bill-wave"></i> 高光币</label>
+                        <input type="number" id="highlight-coins" min="0" value="0">
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button onclick="saveData()" class="btn-save"><i class="fas fa-save"></i> 保存数据</button>
+                    <button onclick="resetForm()" class="btn-reset"><i class="fas fa-redo"></i> 重置</button>
+                </div>
+            </div>
+
+            <!-- 统计概览 -->
+            <div class="stats-overview">
+                <h2><i class="fas fa-chart-line"></i> 本月统计</h2>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>金币总量</h3>
+                        <p id="total-gold">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>心仪积分</h3>
+                        <p id="total-heart">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>高光券</h3>
+                        <p id="total-coupons">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>高光币</h3>
+                        <p id="total-coins">0</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>实况足球资源记录器 v1.0 | 数据存储在GitHub仓库中</p>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
