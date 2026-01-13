@@ -1,3 +1,19 @@
+// 配置验证（添加到文件开头，DOMContentLoaded之前）
+function validateConfig() {
+    console.log('=== 配置验证 ===');
+    console.log('USERNAME:', CONFIG.ADMIN_GITHUB.USERNAME);
+    console.log('TOKEN 存在:', !!CONFIG.ADMIN_GITHUB.TOKEN);
+    console.log('TOKEN 长度:', CONFIG.ADMIN_GITHUB.TOKEN ? CONFIG.ADMIN_GITHUB.TOKEN.length : '空');
+    console.log('TOKEN 前10字符:', CONFIG.ADMIN_GITHUB.TOKEN ? CONFIG.ADMIN_GITHUB.TOKEN.substring(0, 10) + '...' : '空');
+    console.log('GIST_ID 存在:', !!CONFIG.ADMIN_GITHUB.GIST_ID);
+    console.log('GIST_ID:', CONFIG.ADMIN_GITHUB.GIST_ID);
+    console.log('GIST_ID 长度:', CONFIG.ADMIN_GITHUB.GIST_ID ? CONFIG.ADMIN_GITHUB.GIST_ID.length : '空');
+    console.log('=== 验证结束 ===');
+}
+
+// 立即执行验证
+setTimeout(validateConfig, 100);
+
 // 配置
 const CONFIG = {
     // 管理员GitHub配置（需要你填写）
@@ -36,112 +52,181 @@ let userData = {
 // GitHub API管理器（使用CORS代理）
 class GitHubSyncManager {
     constructor() {
+        console.log('正在初始化GitHubSyncManager...');
         this.config = CONFIG.ADMIN_GITHUB;
         this.baseURL = 'https://api.github.com';
+        
+        // 检查配置
+        if (!this.config.TOKEN || !this.config.GIST_ID) {
+            console.error('GitHub配置错误:');
+            console.error('- TOKEN:', this.config.TOKEN ? '已设置' : '未设置');
+            console.error('- GIST_ID:', this.config.GIST_ID ? '已设置' : '未设置');
+            throw new Error('GitHub配置不完整，请在CONFIG.ADMIN_GITHUB中设置TOKEN和GIST_ID');
+        }
+        
+        console.log('配置验证通过:', {
+            tokenLength: this.config.TOKEN.length,
+            gistId: this.config.GIST_ID.substring(0, 8) + '...',
+            username: this.config.USERNAME
+        });
+        
+        // CORS代理列表
         this.corsProxies = [
-            'https://api.allorigins.win/raw?url=',  // 代理1
-            'https://corsproxy.io/?',               // 代理2
-            'https://proxy.cors.sh/',              // 代理3（可能需要API key）
+            'https://corsproxy.io/?',               // 代理1
+            'https://api.codetabs.com/v1/proxy?quest=', // 代理2
+            'https://api.allorigins.win/raw?url=',  // 代理3
         ];
         this.currentProxyIndex = 0;
+        this.maxRetries = 3;
+        
+        console.log('GitHubSyncManager初始化完成');
     }
     
     // 获取当前代理URL
     getProxyUrl(targetUrl) {
         const proxy = this.corsProxies[this.currentProxyIndex];
+        
         if (proxy.includes('corsproxy.io')) {
             return proxy + encodeURIComponent(targetUrl);
         } else if (proxy.includes('allorigins.win')) {
             return proxy + encodeURIComponent(targetUrl);
-        } else if (proxy.includes('cors.sh')) {
-            return proxy + targetUrl;
+        } else if (proxy.includes('codetabs.com')) {
+            return proxy + encodeURIComponent(targetUrl);
         }
-        return targetUrl; // 不使用代理
+        
+        console.warn('未找到匹配的代理，使用直接URL');
+        return targetUrl;
     }
     
-    // 切换到下一个代理（失败时）
+    // 切换到下一个代理
     rotateProxy() {
         this.currentProxyIndex = (this.currentProxyIndex + 1) % this.corsProxies.length;
-        console.log(`切换到代理: ${this.corsProxies[this.currentProxyIndex]}`);
+        console.log(`切换到代理 ${this.currentProxyIndex + 1}: ${this.corsProxies[this.currentProxyIndex]}`);
+        return this.currentProxyIndex;
     }
     
     // 使用代理发送请求
     async fetchWithProxy(url, options = {}) {
-        const maxRetries = this.corsProxies.length;
+        console.log(`开始代理请求: ${url.substring(0, 50)}...`);
         
-        for (let attempt = 0; attempt < maxRetries; attempt++) {
+        for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
             try {
                 const proxyUrl = this.getProxyUrl(url);
-                console.log(`尝试代理请求: ${proxyUrl.substring(0, 100)}...`);
+                console.log(`尝试 ${attempt}/${this.maxRetries}: ${proxyUrl.substring(0, 80)}...`);
                 
                 // 准备请求头
                 const proxyOptions = {
                     ...options,
                     headers: {
                         ...options.headers,
-                        'Accept': 'application/vnd.github.v3+json',
-                        'User-Agent': 'PES-Resource-Tracker/1.0'
-                    }
+                        'Accept': 'application/vnd.github.v3+json'
+                    },
+                    mode: 'cors',
+                    cache: 'no-cache'
                 };
                 
-                // 如果使用 cors.sh 代理，需要特殊处理（可选）
-                if (this.corsProxies[this.currentProxyIndex].includes('cors.sh')) {
-                    proxyOptions.headers['x-cors-api-key'] = 'temp_4e7fd87eec00832a9fa1d1b7e6f9d9a6'; // 临时免费key
-                }
-                
+                // 发送请求
                 const response = await fetch(proxyUrl, proxyOptions);
                 
-                // 检查响应状态
+                console.log(`请求 ${attempt} 响应状态:`, response.status, response.statusText);
+                
                 if (!response.ok) {
                     const errorText = await response.text();
+                    console.error(`HTTP错误 ${response.status}:`, errorText.substring(0, 200));
+                    
+                    // 如果是认证错误，可能是token问题
+                    if (response.status === 401 || response.status === 403) {
+                        throw new Error(`认证失败: ${response.status} - 请检查Token是否正确`);
+                    }
+                    
+                    // 如果是404，可能是Gist不存在
+                    if (response.status === 404) {
+                        throw new Error(`Gist不存在: ${this.config.GIST_ID}`);
+                    }
+                    
+                    // 其他错误，继续重试
+                    if (attempt < this.maxRetries) {
+                        console.log('重试中...');
+                        this.rotateProxy();
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        continue;
+                    }
+                    
                     throw new Error(`HTTP ${response.status}: ${errorText.substring(0, 100)}`);
                 }
                 
+                console.log(`请求 ${attempt} 成功`);
                 return response;
                 
             } catch (error) {
-                console.error(`代理请求失败 (尝试 ${attempt + 1}/${maxRetries}):`, error.message);
+                console.error(`尝试 ${attempt} 失败:`, error.message);
                 
-                if (attempt < maxRetries - 1) {
+                if (attempt < this.maxRetries) {
                     // 切换代理并重试
                     this.rotateProxy();
-                    console.log('正在重试...');
-                    await new Promise(resolve => setTimeout(resolve, 1000)); // 等待1秒
+                    console.log('等待1秒后重试...');
+                    await new Promise(resolve => setTimeout(resolve, 1000));
                 } else {
-                    // 所有代理都失败，尝试直接请求（可能会因CORS失败）
-                    console.log('所有代理失败，尝试直接请求...');
-                    try {
-                        const directResponse = await fetch(url, {
-                            ...options,
-                            mode: 'cors', // 明确指定CORS模式
-                            headers: {
-                                ...options.headers,
-                                'Accept': 'application/vnd.github.v3+json',
-                                'User-Agent': 'PES-Resource-Tracker/1.0'
-                            }
-                        });
-                        return directResponse;
-                    } catch (directError) {
-                        throw new Error(`所有请求方式失败: ${directError.message}`);
-                    }
+                    // 所有尝试都失败
+                    console.error('所有代理尝试都失败');
+                    throw new Error(`请求失败: ${error.message}`);
                 }
             }
         }
     }
     
-    // 获取所有用户数据（使用代理）
+    // 测试连接
+    async testConnection() {
+        console.log('开始测试GitHub连接...');
+        
+        try {
+            const testUrl = `${this.baseURL}/user`;
+            console.log('测试URL:', testUrl);
+            
+            const response = await this.fetchWithProxy(testUrl, {
+                headers: {
+                    'Authorization': `Bearer ${this.config.TOKEN}`
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`测试失败: ${response.status}`);
+            }
+            
+            const userData = await response.json();
+            console.log('连接测试成功，用户:', userData.login);
+            
+            return {
+                success: true,
+                user: userData.login,
+                message: 'GitHub连接成功'
+            };
+            
+        } catch (error) {
+            console.error('连接测试失败:', error);
+            return {
+                success: false,
+                error: error.message,
+                message: 'GitHub连接失败'
+            };
+        }
+    }
+    
+    // 获取所有用户数据
     async getAllUsersData() {
+        console.log('开始获取所有用户数据...');
+        
         try {
             if (!this.config.TOKEN || !this.config.GIST_ID) {
                 throw new Error('GitHub配置不完整');
             }
             
             const url = `${this.baseURL}/gists/${this.config.GIST_ID}`;
-            console.log('获取Gist数据:', url);
+            console.log('Gist URL:', url);
             
             const response = await this.fetchWithProxy(url, {
                 headers: {
-                    'Authorization': `Bearer ${this.config.TOKEN}`,
+                    'Authorization': `Bearer ${this.config.TOKEN}`
                 }
             });
             
@@ -150,19 +235,32 @@ class GitHubSyncManager {
             }
             
             const gist = await response.json();
+            console.log('Gist获取成功:', {
+                id: gist.id,
+                文件数: Object.keys(gist.files || {}).length,
+                描述: gist.description,
+                更新时间: gist.updated_at
+            });
             
             // 检查是否有 users.json 文件
             if (!gist.files || !gist.files['users.json']) {
-                throw new Error('Gist中没有找到users.json文件');
+                console.warn('Gist中没有找到users.json文件，将创建新文件');
+                return {
+                    success: true,
+                    data: { users: {}, metadata: { totalUsers: 0, version: '1.0' } },
+                    lastUpdated: new Date().toISOString(),
+                    isNew: true
+                };
             }
             
             const content = JSON.parse(gist.files['users.json'].content);
+            console.log('解析成功，用户数量:', Object.keys(content.users || {}).length);
             
             return {
                 success: true,
                 data: content,
                 lastUpdated: gist.updated_at,
-                files: Object.keys(gist.files)
+                isNew: false
             };
             
         } catch (error) {
@@ -170,25 +268,28 @@ class GitHubSyncManager {
             return {
                 success: false,
                 error: error.message,
-                details: error.toString()
+                message: '获取数据失败'
             };
         }
     }
     
-    // 更新用户数据到GitHub（使用代理）
+    // 更新用户数据到GitHub
     async updateUserData(username, userData) {
+        console.log(`开始更新用户数据: ${username}`);
+        
         try {
             if (!this.config.TOKEN || !this.config.GIST_ID) {
                 throw new Error('GitHub配置不完整');
             }
             
             // 先获取当前所有数据
+            console.log('获取现有数据...');
             const allDataResult = await this.getAllUsersData();
             
+            let allData;
             if (!allDataResult.success) {
-                console.error('获取现有数据失败:', allDataResult.error);
-                // 如果没有现有数据，创建新的
-                const allData = {
+                console.log('获取现有数据失败，创建新数据结构');
+                allData = {
                     users: {},
                     metadata: {
                         totalUsers: 0,
@@ -197,39 +298,39 @@ class GitHubSyncManager {
                         version: '1.1'
                     }
                 };
-                allData.users[username] = {
-                    ...userData,
-                    lastSync: new Date().toISOString()
-                };
-                allData.metadata.totalUsers = 1;
-                
             } else {
-                const allData = allDataResult.data;
-                
-                // 更新或添加用户数据
-                allData.users = allData.users || {};
-                allData.users[username] = {
-                    ...userData,
-                    lastSync: new Date().toISOString()
-                };
-                
-                // 更新总用户数
-                allData.metadata = {
-                    totalUsers: Object.keys(allData.users || {}).length,
-                    lastUpdated: new Date().toISOString(),
-                    maxUsers: CONFIG.MAX_USERS,
-                    version: '1.1'
-                };
+                allData = allDataResult.data;
             }
             
-            // 更新到GitHub（使用代理）
+            // 更新或添加用户数据
+            allData.users = allData.users || {};
+            allData.users[username] = {
+                ...userData,
+                lastSync: new Date().toISOString()
+            };
+            
+            // 更新总用户数
+            allData.metadata = {
+                totalUsers: Object.keys(allData.users).length,
+                lastUpdated: new Date().toISOString(),
+                maxUsers: CONFIG.MAX_USERS,
+                version: '1.1'
+            };
+            
+            console.log('更新后数据:', {
+                总用户数: allData.metadata.totalUsers,
+                最大用户数: allData.metadata.maxUsers
+            });
+            
+            // 更新到GitHub
             const url = `${this.baseURL}/gists/${this.config.GIST_ID}`;
+            console.log('更新Gist URL:', url);
             
             const response = await this.fetchWithProxy(url, {
                 method: 'PATCH',
                 headers: {
                     'Authorization': `Bearer ${this.config.TOKEN}`,
-                    'Content-Type': 'application/json',
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     description: `实况足球资源记录 - ${new Date().toLocaleDateString('zh-CN')}`,
@@ -247,13 +348,14 @@ class GitHubSyncManager {
             }
             
             const result = await response.json();
-            console.log('更新成功:', result);
+            console.log('更新成功:', result.html_url);
             
             return {
                 success: true,
                 message: '数据同步成功',
                 userCount: allData.metadata.totalUsers,
-                gistUrl: result.html_url
+                gistUrl: result.html_url,
+                lastUpdated: result.updated_at
             };
             
         } catch (error) {
@@ -261,112 +363,7 @@ class GitHubSyncManager {
             return {
                 success: false,
                 error: error.message,
-                details: error.toString()
-            };
-        }
-    }
-    
-    // 删除用户（使用代理）
-    async deleteUser(username) {
-        try {
-            if (!this.config.TOKEN || !this.config.GIST_ID) {
-                throw new Error('GitHub配置不完整');
-            }
-            
-            const allDataResult = await this.getAllUsersData();
-            
-            if (!allDataResult.success) {
-                return allDataResult;
-            }
-            
-            const allData = allDataResult.data;
-            
-            if (allData.users && allData.users[username]) {
-                delete allData.users[username];
-                
-                // 更新总用户数
-                allData.metadata = {
-                    ...allData.metadata,
-                    totalUsers: Object.keys(allData.users || {}).length,
-                    lastUpdated: new Date().toISOString()
-                };
-                
-                // 更新到GitHub（使用代理）
-                const url = `${this.baseURL}/gists/${this.config.GIST_ID}`;
-                
-                const response = await this.fetchWithProxy(url, {
-                    method: 'PATCH',
-                    headers: {
-                        'Authorization': `Bearer ${this.config.TOKEN}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        files: {
-                            'users.json': {
-                                content: JSON.stringify(allData, null, 2)
-                            }
-                        }
-                    })
-                });
-                
-                if (!response.ok) {
-                    throw new Error(`删除失败: ${response.status}`);
-                }
-                
-                return {
-                    success: true,
-                    message: '用户删除成功'
-                };
-            } else {
-                return {
-                    success: false,
-                    error: '用户不存在'
-                };
-            }
-            
-        } catch (error) {
-            console.error('删除用户失败:', error);
-            return {
-                success: false,
-                error: error.message
-            };
-        }
-    }
-    
-    // 测试连接（使用代理）
-    async testConnection() {
-        try {
-            const url = `${this.baseURL}/gists/${this.config.GIST_ID}`;
-            console.log('测试连接:', url);
-            
-            const response = await this.fetchWithProxy(url, {
-                headers: {
-                    'Authorization': `Bearer ${this.config.TOKEN}`,
-                }
-            });
-            
-            if (!response.ok) {
-                return {
-                    success: false,
-                    status: response.status,
-                    message: `HTTP ${response.status}: ${response.statusText}`
-                };
-            }
-            
-            const gist = await response.json();
-            return {
-                success: true,
-                message: '连接成功',
-                gistId: gist.id,
-                files: Object.keys(gist.files),
-                updatedAt: gist.updated_at
-            };
-            
-        } catch (error) {
-            console.error('测试连接失败:', error);
-            return {
-                success: false,
-                message: `连接失败: ${error.message}`
+                message: '同步失败'
             };
         }
     }
@@ -394,14 +391,61 @@ function initGitHubSync() {
 }
 
 // 初始化GitHub同步管理器
-let githubSyncManager = null;
-
 function initGitHubSync() {
-    if (CONFIG.ADMIN_GITHUB.TOKEN && CONFIG.ADMIN_GITHUB.GIST_ID) {
+    console.log('初始化GitHub同步管理器...');
+    
+    try {
+        // 验证配置
+        if (!CONFIG.ADMIN_GITHUB.TOKEN || !CONFIG.ADMIN_GITHUB.GIST_ID) {
+            console.warn('GitHub配置不完整，同步功能不可用');
+            console.warn('TOKEN:', CONFIG.ADMIN_GITHUB.TOKEN ? '已设置' : '未设置');
+            console.warn('GIST_ID:', CONFIG.ADMIN_GITHUB.GIST_ID ? '已设置' : '未设置');
+            
+            // 在界面上显示警告
+            const syncBtn = document.getElementById('sync-button');
+            if (syncBtn) {
+                syncBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> 配置错误';
+                syncBtn.title = '请检查GitHub配置';
+                syncBtn.disabled = true;
+            }
+            
+            return;
+        }
+        
+        // 创建管理器实例
         githubSyncManager = new GitHubSyncManager();
-        console.log('GitHub同步管理器已初始化');
-    } else {
-        console.warn('GitHub配置不完整，同步功能不可用');
+        console.log('GitHubSyncManager创建成功');
+        
+        // 测试连接
+        setTimeout(async () => {
+            console.log('开始测试连接...');
+            const result = await githubSyncManager.testConnection();
+            
+            const syncBtn = document.getElementById('sync-button');
+            if (syncBtn) {
+                if (result.success) {
+                    syncBtn.innerHTML = '<i class="fas fa-sync-alt"></i> 同步到GitHub';
+                    syncBtn.title = '点击同步数据到GitHub';
+                    syncBtn.disabled = false;
+                    console.log('GitHub连接测试成功');
+                } else {
+                    syncBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> 连接失败';
+                    syncBtn.title = result.message;
+                    syncBtn.disabled = true;
+                    console.warn('GitHub连接测试失败:', result.message);
+                }
+            }
+        }, 500);
+        
+    } catch (error) {
+        console.error('初始化GitHub同步管理器失败:', error);
+        
+        const syncBtn = document.getElementById('sync-button');
+        if (syncBtn) {
+            syncBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> 初始化失败';
+            syncBtn.title = error.message;
+            syncBtn.disabled = true;
+        }
     }
 }
 
