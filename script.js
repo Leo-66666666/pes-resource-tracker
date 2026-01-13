@@ -1,5 +1,5 @@
 // 配置
-const GLOBAL_CONFIG = {
+const CONFIG = {
     // 管理员GitHub配置（需要你填写）
     ADMIN_GITHUB: {
         USERNAME: 'Leo-66666666',           // 你的GitHub用户名
