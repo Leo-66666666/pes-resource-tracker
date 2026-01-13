@@ -1,9 +1,7 @@
 // 配置
 const CONFIG = {
-    REPO_OWNER: 'Leo-66666666', // 替换为你的GitHub用户名
-    REPO_NAME: 'pes-resource-data',     // 数据仓库名称
-    BRANCH: 'main',
-    MAX_USERS: 100
+    MAX_USERS: 100,
+    ADMIN_PASSWORD: '123456'  // 默认管理员密码
 };
 
 // 状态管理
@@ -13,8 +11,22 @@ let userData = {
     records: {}
 };
 
+// 初始化本地存储数据
+function initializeLocalStorage() {
+    // 如果还没有用户列表，创建一个空的
+    if (!localStorage.getItem('pes_users')) {
+        localStorage.setItem('pes_users', JSON.stringify({
+            users: [],
+            lastUpdated: new Date().toISOString()
+        }));
+    }
+}
+
 // DOM加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
+    // 初始化本地存储
+    initializeLocalStorage();
+    
     // 设置今天日期
     document.getElementById('current-date').value = currentDate;
     
@@ -23,10 +35,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 如果之前有登录信息，尝试自动登录
     const savedUser = localStorage.getItem('pes_current_user');
-    const savedPass = localStorage.getItem('pes_current_pass');
-    if (savedUser && savedPass) {
+    if (savedUser) {
         document.getElementById('username').value = savedUser;
-        document.getElementById('password').value = savedPass;
     }
     
     // 初始化日历
@@ -70,13 +80,26 @@ async function login() {
     }
     
     try {
-        // 加载用户数据
-        await loadUserData(username, password);
+        // 从localStorage加载用户数据
+        const userDataStr = localStorage.getItem(`pes_user_${username}`);
+        
+        if (!userDataStr) {
+            throw new Error('用户不存在！');
+        }
+        
+        const storedData = JSON.parse(userDataStr);
+        
+        // 验证密码
+        if (storedData.password !== password) {
+            throw new Error('密码错误！');
+        }
+        
+        // 设置当前用户
         currentUser = username;
+        userData = storedData;
         
         // 保存登录信息到本地存储
         localStorage.setItem('pes_current_user', username);
-        localStorage.setItem('pes_current_pass', password);
         
         // 显示用户信息
         document.getElementById('current-user').textContent = `用户: ${username}`;
@@ -118,7 +141,7 @@ async function register() {
     
     try {
         // 检查用户是否已存在
-        const users = await getAllUsers();
+        const users = JSON.parse(localStorage.getItem('pes_users')).users;
         if (users.includes(username)) {
             throw new Error('用户名已存在！');
         }
@@ -135,8 +158,14 @@ async function register() {
             records: {}
         };
         
-        // 保存用户数据
-        await saveUserData(username, userRecord);
+        // 保存用户数据到localStorage
+        localStorage.setItem(`pes_user_${username}`, JSON.stringify(userRecord));
+        
+        // 更新用户列表
+        const usersData = JSON.parse(localStorage.getItem('pes_users'));
+        usersData.users.push(username);
+        usersData.lastUpdated = new Date().toISOString();
+        localStorage.setItem('pes_users', JSON.stringify(usersData));
         
         alert('注册成功！请登录。');
         showLogin();
@@ -153,78 +182,7 @@ function logout() {
     currentUser = null;
     userData = { records: {} };
     localStorage.removeItem('pes_current_user');
-    localStorage.removeItem('pes_current_pass');
     showLogin();
-}
-
-// 加载用户数据
-async function loadUserData(username, password) {
-    try {
-        // 从GitHub加载用户数据
-        const data = await fetchGitHubData(username);
-        
-        // 验证密码
-        if (data.password !== password) {
-            throw new Error('密码错误！');
-        }
-        
-        userData = data;
-        return data;
-    } catch (error) {
-        // 如果用户不存在，创建新用户数据
-        if (error.message.includes('404')) {
-            throw new Error('用户不存在！');
-        }
-        throw error;
-    }
-}
-
-// 从GitHub获取数据
-async function fetchGitHubData(username) {
-    const url = `https://raw.githubusercontent.com/${CONFIG.REPO_OWNER}/${CONFIG.REPO_NAME}/${CONFIG.BRANCH}/data/${username}.json`;
-    const response = await fetch(url);
-    
-    if (!response.ok) {
-        throw new Error('用户数据不存在');
-    }
-    
-    return await response.json();
-}
-
-// 获取所有用户
-async function getAllUsers() {
-    try {
-        // 尝试获取用户列表
-        const url = `https://raw.githubusercontent.com/${CONFIG.REPO_OWNER}/${CONFIG.REPO_NAME}/${CONFIG.BRANCH}/users.json`;
-        const response = await fetch(url);
-        
-        if (response.ok) {
-            const data = await response.json();
-            return data.users || [];
-        }
-    } catch (error) {
-        // 如果文件不存在，返回空数组
-        return [];
-    }
-    return [];
-}
-
-// 保存用户数据到GitHub
-async function saveUserData(username, data) {
-    // 注意：由于GitHub Pages是静态的，我们无法直接写入
-    // 这里我们使用GitHub的Gists作为临时解决方案
-    // 在实际使用中，你需要创建一个GitHub仓库来存储数据
-    // 或者使用其他免费的数据库服务
-    
-    // 这里我们使用localStorage作为替代方案
-    localStorage.setItem(`pes_user_${username}`, JSON.stringify(data));
-    
-    // 更新用户列表
-    const users = await getAllUsers();
-    if (!users.includes(username)) {
-        users.push(username);
-        localStorage.setItem('pes_users', JSON.stringify({ users: users }));
-    }
 }
 
 // 加载指定日期的数据
@@ -275,8 +233,8 @@ async function saveData() {
     }
     userData.records[date] = record;
     
-    // 保存到GitHub（这里使用localStorage替代）
-    await saveUserData(currentUser, userData);
+    // 保存到localStorage
+    localStorage.setItem(`pes_user_${currentUser}`, JSON.stringify(userData));
     
     // 更新统计
     updateStats();
@@ -509,7 +467,7 @@ function importData() {
                 const importedData = JSON.parse(e.target.result);
                 if (importedData.username === currentUser) {
                     userData = importedData;
-                    saveUserData(currentUser, userData);
+                    localStorage.setItem(`pes_user_${currentUser}`, JSON.stringify(userData));
                     alert('数据导入成功！');
                     loadDateData();
                     updateStats();
@@ -526,4 +484,14 @@ function importData() {
     };
     
     input.click();
+}
+
+// 管理员登录（从主界面添加链接）
+function openAdmin() {
+    const password = prompt('请输入管理员密码：');
+    if (password === CONFIG.ADMIN_PASSWORD) {
+        window.open('admin.html', '_blank');
+    } else {
+        alert('密码错误！');
+    }
 }
