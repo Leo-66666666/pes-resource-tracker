@@ -1588,11 +1588,28 @@ async function testCloudConnection() {
         const testResult = await cloudSyncManager.testConnection();
         console.log('连接测试结果:', testResult);
         
-        // 测试Gist访问
-        const gistResult = await cloudSyncManager.getAllUsersData();
-        console.log('Gist访问结果:', gistResult);
+        // 显示更详细的信息
+        let message = `测试结果:\n\n1. 连接测试: ${testResult.success ? '✅ 成功' : '❌ 失败'}\n   ${testResult.message}`;
         
-        alert(`测试结果:\n\n1. 连接测试: ${testResult.success ? '✓ 成功' : '✗ 失败'}\n   ${testResult.message}\n\n2. Gist访问: ${gistResult.success ? '✓ 成功' : '✗ 失败'}\n   ${gistResult.message || gistResult.error}`);
+        if (testResult.success && testResult.data) {
+            message += `\n   用户: ${testResult.data.login || '未知'}`;
+            message += `\n   ID: ${testResult.data.id || '未知'}`;
+        }
+        
+        // 测试Gist访问
+        if (testResult.success) {
+            const gistResult = await cloudSyncManager.getAllUsersData();
+            console.log('Gist访问结果:', gistResult);
+            
+            message += `\n\n2. Gist访问: ${gistResult.success ? '✅ 成功' : '❌ 失败'}\n   ${gistResult.message || gistResult.error || '无错误信息'}`;
+            
+            if (gistResult.success) {
+                message += `\n   总用户数: ${gistResult.totalUsers || 0}`;
+                message += `\n   最后更新: ${gistResult.lastUpdated ? new Date(gistResult.lastUpdated).toLocaleString('zh-CN') : '未知'}`;
+            }
+        }
+        
+        alert(message);
         
     } catch (error) {
         console.error('测试失败:', error);
