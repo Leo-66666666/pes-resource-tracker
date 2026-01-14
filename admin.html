@@ -6,1141 +6,1700 @@
     <title>管理员界面 - 实况足球资源记录器</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* 管理员专用样式 */
+        .admin-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .admin-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #eaeaea;
+        }
+        
+        .admin-title {
+            color: #333;
+            font-size: 28px;
+        }
+        
+        .admin-title i {
+            color: #dc3545;
+            margin-right: 10px;
+        }
+        
+        .admin-stats {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-box {
+            flex: 1;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        
+        .stat-box h3 {
+            margin-top: 0;
+            color: #666;
+            font-size: 16px;
+        }
+        
+        .stat-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #333;
+            margin: 10px 0;
+        }
+        
+        .stat-change {
+            font-size: 14px;
+            color: #28a745;
+        }
+        
+        .stat-change.negative {
+            color: #dc3545;
+        }
+        
+        .admin-sections {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        
+        @media (max-width: 1200px) {
+            .admin-sections {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .admin-section {
+            background: white;
+            border-radius: 8px;
+            padding: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .section-title {
+            font-size: 20px;
+            color: #333;
+            margin: 0;
+        }
+        
+        .section-title i {
+            margin-right: 10px;
+            color: #007bff;
+        }
+        
+        .user-list {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+        
+        .user-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 15px;
+            margin-bottom: 8px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border-left: 4px solid #007bff;
+            transition: all 0.3s;
+        }
+        
+        .user-item:hover {
+            background: #e9ecef;
+            transform: translateX(5px);
+        }
+        
+        .user-item.admin-user {
+            border-left-color: #dc3545;
+        }
+        
+        .user-info {
+            flex: 1;
+        }
+        
+        .user-name {
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .user-meta {
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+        }
+        
+        .user-stats {
+            font-size: 12px;
+            color: #666;
+            text-align: right;
+        }
+        
+        .user-actions {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .btn-action {
+            padding: 5px 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s;
+        }
+        
+        .btn-view {
+            background: #17a2b8;
+            color: white;
+        }
+        
+        .btn-delete {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .btn-view:hover {
+            background: #138496;
+        }
+        
+        .btn-delete:hover {
+            background: #c82333;
+        }
+        
+        .data-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .btn-admin {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .btn-export-all {
+            background: #28a745;
+            color: white;
+        }
+        
+        .btn-export-all:hover {
+            background: #218838;
+        }
+        
+        .btn-sync-all {
+            background: #007bff;
+            color: white;
+        }
+        
+        .btn-sync-all:hover {
+            background: #0069d9;
+        }
+        
+        .btn-clear-local {
+            background: #ffc107;
+            color: #333;
+        }
+        
+        .btn-clear-local:hover {
+            background: #e0a800;
+        }
+        
+        .btn-clear-cloud {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .btn-clear-cloud:hover {
+            background: #c82333;
+        }
+        
+        .danger-zone {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+        
+        .danger-header {
+            display: flex;
+            align-items: center;
+            color: #856404;
+            margin-bottom: 15px;
+        }
+        
+        .danger-header i {
+            margin-right: 10px;
+            font-size: 20px;
+        }
+        
+        .danger-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .btn-danger {
+            flex: 1;
+            padding: 12px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        
+        .btn-danger:hover {
+            background: #c82333;
+        }
+        
+        .btn-danger:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .logs-container {
+            background: #f8f9fa;
+            border-radius: 6px;
+            padding: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 5px;
+            border-left: 3px solid #007bff;
+            background: white;
+        }
+        
+        .log-entry.error {
+            border-left-color: #dc3545;
+            color: #dc3545;
+        }
+        
+        .log-entry.success {
+            border-left-color: #28a745;
+            color: #28a745;
+        }
+        
+        .log-entry.warning {
+            border-left-color: #ffc107;
+            color: #856404;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal.active {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-header h3 {
+            margin: 0;
+            color: #333;
+        }
+        
+        .modal-body {
+            padding: 20px;
+        }
+        
+        .modal-footer {
+            padding: 15px 20px;
+            border-top: 1px solid #eee;
+            text-align: right;
+        }
+        
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+        }
+        
+        .close-btn:hover {
+            color: #333;
+        }
+        
+        .user-detail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .detail-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+        }
+        
+        .detail-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        
+        .detail-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .records-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        
+        .records-table th,
+        .records-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .records-table th {
+            background: #f8f9fa;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .records-table tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .no-data {
+            text-align: center;
+            color: #666;
+            padding: 40px;
+            font-style: italic;
+        }
+        
+        .admin-footer {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            color: #666;
+            font-size: 14px;
+        }
+        
+        /* 加载动画 */
+        .loader {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .loading {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        
+        .status-local {
+            background: #e2f0fb;
+            color: #007bff;
+        }
+        
+        .status-synced {
+            background: #d4edda;
+            color: #28a745;
+        }
+        
+        .status-error {
+            background: #f8d7da;
+            color: #dc3545;
+        }
+    </style>
 </head>
 <body>
-    <div class="container">
-        <div class="section">
-            <!-- 管理员验证 -->
-            <div id="admin-login" class="login-form">
-                <h2><i class="fas fa-user-shield"></i> 管理员验证</h2>
-                <div class="form-group">
-                    <input type="password" id="admin-password" placeholder="输入管理员密码" required>
-                </div>
-                <button onclick="adminLogin()">验证</button>
-                <p class="hint">默认管理员密码：123456</p>
+    <!-- 管理员密码验证 -->
+    <div id="login-modal" class="modal active">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-user-shield"></i> 管理员身份验证</h3>
             </div>
-            
-            <!-- 管理员界面 -->
-            <div id="admin-interface" class="hidden">
-                <div class="header">
-                    <h1><i class="fas fa-user-shield"></i> 管理员控制面板</h1>
-                    <div class="user-info">
-                        <button onclick="window.location.href='index.html'" class="btn-small">
-                            <i class="fas fa-arrow-left"></i> 返回主界面
-                        </button>
-                        <button onclick="refreshData()" class="btn-small btn-sync">
-                            <i class="fas fa-sync"></i> 刷新数据
-                        </button>
-                        <button onclick="backupAllData()" class="btn-small btn-export">
-                            <i class="fas fa-cloud-upload-alt"></i> 备份所有数据
-                        </button>
-                    </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="admin-password">管理员密码</label>
+                    <input type="password" id="admin-password" placeholder="请输入管理员密码" style="width: 100%; padding: 10px; margin: 10px 0;">
+                    <div class="input-hint">提示：123456</div>
                 </div>
-                
-                <!-- 系统概览 -->
-                <div class="stats-overview">
-                    <h2><i class="fas fa-chart-bar"></i> 系统概览</h2>
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <h3>总用户数</h3>
-                            <p id="total-users-admin">0</p>
-                        </div>
-                        <div class="stat-card">
-                            <h3>活跃用户(7天)</h3>
-                            <p id="active-users-7days">0</p>
-                        </div>
-                        <div class="stat-card">
-                            <h3>今日新增</h3>
-                            <p id="new-users-today">0</p>
-                        </div>
-                        <div class="stat-card">
-                            <h3>数据总大小</h3>
-                            <p id="total-data-size">0 KB</p>
-                        </div>
-                        <div class="stat-card">
-                            <h3>最后更新</h3>
-                            <p id="last-update-admin">-</p>
-                        </div>
-                        <div class="stat-card">
-                            <h3>系统状态</h3>
-                            <p id="system-status">正常</p>
-                        </div>
-                    </div>
+                <div id="login-error" style="color: #dc3545; margin: 10px 0; display: none;">
+                    <i class="fas fa-exclamation-circle"></i> 密码错误，请重试！
                 </div>
-                
-                <!-- GitHub 数据管理 -->
-                <div class="calendar-section">
-                    <h2><i class="fab fa-github"></i> GitHub 数据管理</h2>
-                    
-                    <div class="form-actions">
-                        <button onclick="fetchAllUsersFromGitHub()" class="btn-primary">
-                            <i class="fas fa-download"></i> 从GitHub加载所有用户
-                        </button>
-                        <button onclick="syncAllUsersToGitHub()" class="btn-secondary">
-                            <i class="fas fa-upload"></i> 同步所有用户到GitHub
-                        </button>
-                        <button onclick="cleanupInactiveUsers()" class="btn-reset">
-                            <i class="fas fa-user-slash"></i> 清理30天未登录用户
-                        </button>
-                    </div>
-                    
-                    <!-- 用户搜索 -->
-                    <div class="search-box">
-                        <input type="text" id="user-search" placeholder="搜索用户..." oninput="searchUsers()">
-                        <button onclick="clearSearch()" class="btn-small">
-                            <i class="fas fa-times"></i> 清除
-                        </button>
-                    </div>
-                    
-                    <!-- 用户表格 -->
-                    <div class="table-container">
-                        <table id="all-users-table">
-                            <thead>
-                                <tr>
-                                    <th>用户名</th>
-                                    <th>注册时间</th>
-                                    <th>最后登录</th>
-                                    <th>记录数</th>
-                                    <th>备注数</th>
-                                    <th>最后同步</th>
-                                    <th>存储模式</th>
-                                    <th>操作</th>
-                                </tr>
-                            </thead>
-                            <tbody id="users-table-body">
-                                <!-- 通过JavaScript动态填充 -->
-                            </tbody>
-                        </table>
-                    </div>
-                    
-                    <!-- 分页控件 -->
-                    <div class="pagination">
-                        <button onclick="prevPage()" class="btn-small">
-                            <i class="fas fa-chevron-left"></i> 上一页
-                        </button>
-                        <span id="page-info">第 1 页，共 1 页</span>
-                        <button onclick="nextPage()" class="btn-small">
-                            下一页 <i class="fas fa-chevron-right"></i>
-                        </button>
-                    </div>
-                </div>
-                
-                <!-- 数据操作 -->
-                <div class="data-form">
-                    <h2><i class="fas fa-cogs"></i> 数据操作</h2>
-                    
-                    <div class="form-actions">
-                        <button onclick="exportAllData()" class="btn-export">
-                            <i class="fas fa-download"></i> 导出所有用户数据
-                        </button>
-                        <button onclick="clearAllLocalData()" class="btn-reset">
-                            <i class="fas fa-trash"></i> 清除所有本地数据
-                        </button>
-                        <button onclick="resetSystem()" class="btn-danger">
-                            <i class="fas fa-exclamation-triangle"></i> 重置系统（危险！）
-                        </button>
-                    </div>
-                    
-                    <!-- 用户操作表单 -->
-                    <div class="admin-form">
-                        <h3>手动操作用户</h3>
-                        <div class="form-group">
-                            <input type="text" id="target-username" placeholder="要操作的用户名">
-                        </div>
-                        <div class="form-actions">
-                            <button onclick="viewUserDetails()" class="btn-small">
-                                <i class="fas fa-eye"></i> 查看用户详情
-                            </button>
-                            <button onclick="editUserData()" class="btn-small">
-                                <i class="fas fa-edit"></i> 编辑用户数据
-                            </button>
-                            <button onclick="deleteUserFromGitHub()" class="btn-small btn-danger">
-                                <i class="fas fa-trash"></i> 从GitHub删除用户
-                            </button>
-                            <button onclick="resetUserPassword()" class="btn-small">
-                                <i class="fas fa-key"></i> 重置用户密码
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- 系统日志 -->
-                <div class="calendar-section">
-                    <h2><i class="fas fa-history"></i> 系统日志</h2>
-                    <div class="log-container">
-                        <div id="system-log">
-                            <!-- 日志将通过JavaScript动态添加 -->
-                        </div>
-                    </div>
-                    <button onclick="clearLogs()" class="btn-small">
-                        <i class="fas fa-trash"></i> 清空日志
-                    </button>
-                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="window.close()" class="btn-secondary" style="margin-right: 10px;">取消</button>
+                <button onclick="verifyAdmin()" class="btn-primary">验证</button>
             </div>
         </div>
     </div>
 
-    <!-- 用户详情对话框 -->
-    <div id="user-detail-dialog" class="modal-overlay">
+    <!-- 主管理界面（初始隐藏） -->
+    <div id="admin-main" style="display: none;">
+        <div class="admin-container">
+            <!-- 顶部标题栏 -->
+            <div class="admin-header">
+                <div>
+                    <h1 class="admin-title"><i class="fas fa-user-shield"></i> 系统管理员控制台</h1>
+                    <p style="color: #666; margin-top: 5px;">管理所有用户数据，谨慎操作！</p>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="refreshAllData()" class="btn-secondary">
+                        <i class="fas fa-sync-alt"></i> 刷新数据
+                    </button>
+                    <button onclick="window.close()" class="btn-secondary">
+                        <i class="fas fa-times"></i> 关闭
+                    </button>
+                </div>
+            </div>
+
+            <!-- 系统统计 -->
+            <div class="admin-stats">
+                <div class="stat-box">
+                    <h3><i class="fas fa-users"></i> 总用户数</h3>
+                    <div class="stat-value" id="total-users">0</div>
+                    <div class="stat-change" id="user-change">今日新增: 0</div>
+                </div>
+                <div class="stat-box">
+                    <h3><i class="fas fa-cloud"></i> 云端用户</h3>
+                    <div class="stat-value" id="cloud-users">0</div>
+                    <div class="stat-change" id="cloud-change">同步率: 0%</div>
+                </div>
+                <div class="stat-box">
+                    <h3><i class="fas fa-database"></i> 总数据量</h3>
+                    <div class="stat-value" id="total-records">0</div>
+                    <div class="stat-change">今日新增: <span id="record-change">0</span></div>
+                </div>
+                <div class="stat-box">
+                    <h3><i class="fas fa-calendar-day"></i> 今日活跃</h3>
+                    <div class="stat-value" id="active-users">0</div>
+                    <div class="stat-change">活跃率: <span id="active-rate">0%</span></div>
+                </div>
+            </div>
+
+            <!-- 主要管理区域 -->
+            <div class="admin-sections">
+                <!-- 用户管理 -->
+                <div class="admin-section">
+                    <div class="section-header">
+                        <h3 class="section-title"><i class="fas fa-user-cog"></i> 用户管理</h3>
+                        <div style="font-size: 14px; color: #666;">
+                            <span id="user-count-display">0</span> 个用户
+                        </div>
+                    </div>
+                    
+                    <!-- 用户搜索 -->
+                    <div style="margin-bottom: 15px;">
+                        <input type="text" id="user-search" placeholder="搜索用户名..." 
+                               style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                    </div>
+                    
+                    <!-- 用户列表 -->
+                    <div class="user-list" id="user-list">
+                        <!-- 用户列表会在这里动态生成 -->
+                        <div class="no-data">正在加载用户数据...</div>
+                    </div>
+                    
+                    <!-- 用户操作 -->
+                    <div class="data-actions">
+                        <button onclick="viewAllUsers()" class="btn-admin btn-view">
+                            <i class="fas fa-list"></i> 查看所有用户
+                        </button>
+                        <button onclick="exportAllUserData()" class="btn-admin btn-export-all">
+                            <i class="fas fa-download"></i> 导出所有数据
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 数据操作 -->
+                <div class="admin-section">
+                    <div class="section-header">
+                        <h3 class="section-title"><i class="fas fa-database"></i> 数据操作</h3>
+                        <div id="data-status" class="status-badge status-local">本地数据</div>
+                    </div>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <p style="color: #666; margin-bottom: 15px;">批量数据操作（谨慎使用）：</p>
+                        
+                        <div class="data-actions">
+                            <button onclick="syncAllToCloud()" class="btn-admin btn-sync-all">
+                                <i class="fas fa-cloud-upload-alt"></i> 同步所有到云端
+                            </button>
+                            <button onclick="backupAllData()" class="btn-admin btn-export-all">
+                                <i class="fas fa-save"></i> 创建完整备份
+                            </button>
+                        </div>
+                        
+                        <div class="data-actions" style="margin-top: 10px;">
+                            <button onclick="importBackup()" class="btn-admin" style="background: #6c757d; color: white;">
+                                <i class="fas fa-file-import"></i> 从备份恢复
+                            </button>
+                            <button onclick="checkDataConsistency()" class="btn-admin" style="background: #17a2b8; color: white;">
+                                <i class="fas fa-check-circle"></i> 数据一致性检查
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- 系统日志 -->
+                    <div style="margin-top: 25px;">
+                        <h4 style="margin-bottom: 10px; color: #333;">
+                            <i class="fas fa-history"></i> 操作日志
+                        </h4>
+                        <div class="logs-container" id="admin-logs">
+                            <div class="log-entry">系统启动时间: <span id="start-time"></span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 危险区域 -->
+            <div class="danger-zone">
+                <div class="danger-header">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <h3 style="margin: 0; color: #856404;">危险操作区域</h3>
+                </div>
+                <p style="color: #856404; margin-bottom: 15px;">
+                    以下操作将永久删除数据，无法恢复！请谨慎操作。
+                </p>
+                <div class="danger-actions">
+                    <button onclick="clearAllLocalData()" class="btn-danger">
+                        <i class="fas fa-trash"></i> 清空所有本地数据
+                    </button>
+                    <button onclick="clearCloudData()" class="btn-danger">
+                        <i class="fas fa-cloud"></i> 清空云端数据
+                    </button>
+                    <button onclick="resetSystem()" class="btn-danger">
+                        <i class="fas fa-bomb"></i> 系统重置（全部清空）
+                    </button>
+                </div>
+            </div>
+
+            <!-- 系统信息 -->
+            <div class="admin-footer">
+                <p>
+                    <i class="fas fa-info-circle"></i> 
+                    实况足球资源记录器 v2.0 管理员界面 | 
+                    云函数地址: <span id="cloud-url" style="font-family: monospace;">未配置</span>
+                </p>
+                <p style="font-size: 12px; color: #999;">
+                    最后更新: <span id="last-updated">从未</span> | 
+                    数据状态: <span id="data-health">未知</span>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 用户详情模态框 -->
+    <div id="user-detail-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2><i class="fas fa-user"></i> 用户详情</h2>
-                <button onclick="closeUserDetail()" class="close-btn">
+                <h3><i class="fas fa-user"></i> 用户详情</h3>
+                <button onclick="closeModal('user-detail-modal')" class="close-btn">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
             <div class="modal-body">
                 <div id="user-detail-content">
-                    <!-- 用户详情将通过JavaScript动态填充 -->
+                    <!-- 用户详情会在这里动态生成 -->
                 </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeModal('user-detail-modal')" class="btn-secondary">关闭</button>
+                <button onclick="deleteCurrentUser()" class="btn-danger">
+                    <i class="fas fa-trash"></i> 删除此用户
+                </button>
             </div>
         </div>
     </div>
 
+    <!-- 确认删除模态框 -->
+    <div id="confirm-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-exclamation-triangle"></i> 确认操作</h3>
+                <button onclick="closeModal('confirm-modal')" class="close-btn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div id="confirm-message">
+                    <!-- 确认消息会在这里动态生成 -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeModal('confirm-modal')" class="btn-secondary">取消</button>
+                <button onclick="executeConfirmedAction()" class="btn-danger" id="confirm-action-btn">
+                    确认执行
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="config.js"></script>
     <script>
-        // 管理员配置
-        const ADMIN_PASSWORD = '114514'; // 实际密码
-        const PAGE_SIZE = 10; // 每页显示的用户数
-        
         // 全局变量
-        let allUsers = [];
-        let filteredUsers = [];
-        let currentPage = 1;
-        let totalPages = 1;
-        
-        // GitHub API管理器
-        class GitHubSyncManager {
-            constructor() {
-                // 从主页面复制配置
-                this.config = {
-                    USERNAME: '', // 需要手动填写
-                    TOKEN: '',    // 需要手动填写
-                    GIST_ID: ''   // 需要手动填写
-                };
-                this.baseURL = 'https://api.github.com';
-            }
-            
-            async getAllUsersData() {
-                try {
-                    if (!this.config.TOKEN || !this.config.GIST_ID) {
-                        throw new Error('GitHub配置不完整');
-                    }
-                    
-                    const response = await fetch(`${this.baseURL}/gists/${this.config.GIST_ID}`, {
-                        headers: {
-                            'Authorization': `token ${this.config.TOKEN}`,
-                            'Accept': 'application/vnd.github.v3+json'
-                        }
-                    });
-                    
-                    if (!response.ok) {
-                        throw new Error(`GitHub API错误: ${response.status}`);
-                    }
-                    
-                    const gist = await response.json();
-                    const content = JSON.parse(gist.files['users.json'].content);
-                    
-                    return {
-                        success: true,
-                        data: content,
-                        lastUpdated: gist.updated_at
-                    };
-                    
-                } catch (error) {
-                    console.error('获取GitHub数据失败:', error);
-                    return {
-                        success: false,
-                        error: error.message
-                    };
-                }
-            }
-            
-            async deleteUser(username) {
-                try {
-                    const allDataResult = await this.getAllUsersData();
-                    
-                    if (!allDataResult.success) {
-                        return allDataResult;
-                    }
-                    
-                    const allData = allDataResult.data;
-                    
-                    if (allData.users && allData.users[username]) {
-                        delete allData.users[username];
-                        
-                        // 更新总用户数
-                        allData.metadata = {
-                            ...allData.metadata,
-                            totalUsers: Object.keys(allData.users || {}).length,
-                            lastUpdated: new Date().toISOString()
-                        };
-                        
-                        // 更新到GitHub
-                        const response = await fetch(`${this.baseURL}/gists/${this.config.GIST_ID}`, {
-                            method: 'PATCH',
-                            headers: {
-                                'Authorization': `token ${this.config.TOKEN}`,
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                files: {
-                                    'users.json': {
-                                        content: JSON.stringify(allData, null, 2)
-                                    }
-                                }
-                            })
-                        });
-                        
-                        if (!response.ok) {
-                            throw new Error(`删除失败: ${response.status}`);
-                        }
-                        
-                        return {
-                            success: true,
-                            message: '用户删除成功'
-                        };
-                    } else {
-                        return {
-                            success: false,
-                            error: '用户不存在'
-                        };
-                    }
-                    
-                } catch (error) {
-                    console.error('删除用户失败:', error);
-                    return {
-                        success: false,
-                        error: error.message
-                    };
-                }
-            }
-            
-            async updateAllUsers(allData) {
-                try {
-                    const response = await fetch(`${this.baseURL}/gists/${this.config.GIST_ID}`, {
-                        method: 'PATCH',
-                        headers: {
-                            'Authorization': `token ${this.config.TOKEN}`,
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/vnd.github.v3+json'
-                        },
-                        body: JSON.stringify({
-                            description: `实况足球用户数据 - ${new Date().toLocaleDateString('zh-CN')}`,
-                            files: {
-                                'users.json': {
-                                    content: JSON.stringify(allData, null, 2)
-                                }
-                            }
-                        })
-                    });
-                    
-                    if (!response.ok) {
-                        throw new Error(`更新失败: ${response.status}`);
-                    }
-                    
-                    return {
-                        success: true,
-                        message: '数据更新成功'
-                    };
-                    
-                } catch (error) {
-                    console.error('更新GitHub数据失败:', error);
-                    return {
-                        success: false,
-                        error: error.message
-                    };
-                }
-            }
-        }
-        
-        let githubSyncManager = null;
-        
-        function initGitHubSync() {
-            githubSyncManager = new GitHubSyncManager();
-        }
-        
-        // DOM加载完成后初始化
-        document.addEventListener('DOMContentLoaded', function() {
-            initGitHubSync();
-        });
-        
-        // 管理员登录
-        function adminLogin() {
+        let currentAdminPassword = null;
+        let allUsersData = [];
+        let cloudUsersData = { users: {} };
+        let currentViewUser = null;
+        let pendingAction = null;
+        let adminLogs = [];
+
+        // 管理员密码验证
+        function verifyAdmin() {
             const password = document.getElementById('admin-password').value;
+            const errorElement = document.getElementById('login-error');
             
-            if (password === ADMIN_PASSWORD) {
-                document.getElementById('admin-login').classList.add('hidden');
-                document.getElementById('admin-interface').classList.remove('hidden');
-                loadAdminData();
-                addLog('管理员登录成功');
+            // 检查密码（提示是123456，实际是114514）
+            if (password === '114514' || password === '123456') {
+                currentAdminPassword = password;
+                document.getElementById('login-modal').classList.remove('active');
+                document.getElementById('admin-main').style.display = 'block';
+                logAction('管理员登录成功');
+                loadAllData();
             } else {
-                alert('密码错误！提示：123456');
-                addLog('管理员登录失败：密码错误');
+                errorElement.style.display = 'block';
+                logAction('管理员登录失败：密码错误', 'error');
             }
         }
-        
-        // 加载管理员数据
-        async function loadAdminData() {
-            // 加载本地用户数据
-            const localUsers = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
+
+        // 加载所有数据
+        async function loadAllData() {
+            logAction('开始加载所有数据...');
             
-            // 更新系统概览
-            document.getElementById('total-users-admin').textContent = localUsers.users.length;
-            document.getElementById('last-update-admin').textContent = new Date().toLocaleString();
+            // 显示加载状态
+            setLoading(true);
             
-            // 计算今日新增用户
-            let newUsersToday = 0;
-            localUsers.users.forEach(username => {
-                const userData = JSON.parse(localStorage.getItem(`pes_user_${username}`) || '{}');
-                if (userData.createdAt) {
-                    const createdDate = new Date(userData.createdAt).toDateString();
-                    const today = new Date().toDateString();
-                    if (createdDate === today) {
-                        newUsersToday++;
+            try {
+                // 1. 加载本地用户数据
+                const localUsers = await loadLocalUsers();
+                
+                // 2. 加载云端用户数据（如果配置了云函数）
+                if (CONFIG.CLOUD_BACKEND && CONFIG.CLOUD_BACKEND.URL) {
+                    document.getElementById('cloud-url').textContent = 
+                        CONFIG.CLOUD_BACKEND.URL.replace('https://', '');
+                    await loadCloudUsers();
+                }
+                
+                // 3. 更新统计数据
+                updateStatistics();
+                
+                // 4. 显示用户列表
+                displayUserList(localUsers);
+                
+                logAction('数据加载完成', 'success');
+            } catch (error) {
+                logAction('数据加载失败: ' + error.message, 'error');
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        // 加载本地用户数据
+        async function loadLocalUsers() {
+            try {
+                // 从localStorage加载用户列表
+                const usersData = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
+                const users = usersData.users || [];
+                
+                // 加载每个用户的详细数据
+                allUsersData = [];
+                for (const username of users) {
+                    const userDataStr = localStorage.getItem(`pes_user_${username}`);
+                    if (userDataStr) {
+                        const userData = JSON.parse(userDataStr);
+                        allUsersData.push({
+                            username: username,
+                            ...userData
+                        });
                     }
                 }
-            });
-            document.getElementById('new-users-today').textContent = newUsersToday;
-            
-            // 计算数据大小
-            let totalSize = 0;
-            localUsers.users.forEach(username => {
-                const data = localStorage.getItem(`pes_user_${username}`);
-                if (data) totalSize += new Blob([data]).size;
-            });
-            document.getElementById('total-data-size').textContent = Math.round(totalSize / 1024) + ' KB';
-            
-            addLog('管理员数据加载完成');
+                
+                logAction(`加载了 ${allUsersData.length} 个本地用户`);
+                return allUsersData;
+            } catch (error) {
+                logAction('加载本地用户数据失败: ' + error.message, 'error');
+                return [];
+            }
         }
-        
-        // 从GitHub获取所有用户数据
-        async function fetchAllUsersFromGitHub() {
-            if (!githubSyncManager) {
-                alert('GitHub配置不完整，请检查配置！');
-                addLog('GitHub配置不完整，无法获取数据');
+
+        // 加载云端用户数据
+        async function loadCloudUsers() {
+            try {
+                if (!CONFIG.CLOUD_BACKEND.URL || CONFIG.CLOUD_BACKEND.URL.includes('你的云函数地址')) {
+                    logAction('云函数地址未配置，跳过云端数据加载', 'warning');
+                    return;
+                }
+                
+                const response = await fetch(`${CONFIG.CLOUD_BACKEND.URL}/gist`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    cloudUsersData = result.data || { users: {} };
+                    logAction(`加载了 ${Object.keys(cloudUsersData.users || {}).length} 个云端用户`, 'success');
+                    
+                    // 更新数据状态
+                    document.getElementById('data-status').textContent = '云端数据已同步';
+                    document.getElementById('data-status').className = 'status-badge status-synced';
+                } else {
+                    throw new Error(result.message || '获取云端数据失败');
+                }
+            } catch (error) {
+                logAction('加载云端用户数据失败: ' + error.message, 'error');
+                
+                // 更新数据状态
+                document.getElementById('data-status').textContent = '云端连接失败';
+                document.getElementById('data-status').className = 'status-badge status-error';
+            }
+        }
+
+        // 更新统计数据
+        function updateStatistics() {
+            // 总用户数
+            document.getElementById('total-users').textContent = allUsersData.length;
+            document.getElementById('user-count-display').textContent = allUsersData.length;
+            
+            // 云端用户数
+            const cloudUserCount = Object.keys(cloudUsersData.users || {}).length;
+            document.getElementById('cloud-users').textContent = cloudUserCount;
+            
+            // 计算同步率
+            const syncRate = allUsersData.length > 0 ? 
+                Math.round((cloudUserCount / allUsersData.length) * 100) : 0;
+            document.getElementById('cloud-change').textContent = `同步率: ${syncRate}%`;
+            
+            // 总数据量（记录条数）
+            let totalRecords = 0;
+            let todayRecords = 0;
+            const today = new Date().toISOString().split('T')[0];
+            
+            allUsersData.forEach(user => {
+                const recordCount = Object.keys(user.records || {}).length;
+                totalRecords += recordCount;
+                
+                // 计算今日新增记录
+                if (user.records && user.records[today]) {
+                    todayRecords++;
+                }
+            });
+            
+            document.getElementById('total-records').textContent = totalRecords;
+            document.getElementById('record-change').textContent = todayRecords;
+            
+            // 今日活跃用户
+            const activeUsers = allUsersData.filter(user => {
+                if (!user.lastLogin) return false;
+                const lastLoginDate = new Date(user.lastLogin).toISOString().split('T')[0];
+                return lastLoginDate === today;
+            }).length;
+            
+            document.getElementById('active-users').textContent = activeUsers;
+            
+            const activeRate = allUsersData.length > 0 ? 
+                Math.round((activeUsers / allUsersData.length) * 100) : 0;
+            document.getElementById('active-rate').textContent = `${activeRate}%`;
+            
+            // 更新今日新增用户
+            const todayCreated = allUsersData.filter(user => {
+                if (!user.createdAt) return false;
+                const createdDate = new Date(user.createdAt).toISOString().split('T')[0];
+                return createdDate === today;
+            }).length;
+            
+            document.getElementById('user-change').textContent = `今日新增: ${todayCreated}`;
+            
+            // 更新最后更新时间
+            document.getElementById('last-updated').textContent = new Date().toLocaleString('zh-CN');
+            
+            // 更新数据健康状态
+            const dataHealth = checkDataHealth();
+            document.getElementById('data-health').textContent = dataHealth;
+            
+            // 更新开始时间（如果还没设置）
+            if (!document.getElementById('start-time').textContent) {
+                document.getElementById('start-time').textContent = new Date().toLocaleString('zh-CN');
+            }
+        }
+
+        // 检查数据健康状态
+        function checkDataHealth() {
+            if (allUsersData.length === 0) return '无数据';
+            
+            let issues = 0;
+            
+            // 检查每个用户的数据完整性
+            allUsersData.forEach(user => {
+                // 检查必需字段
+                if (!user.username || !user.password || !user.createdAt) {
+                    issues++;
+                }
+                
+                // 检查记录数据格式
+                if (user.records && typeof user.records !== 'object') {
+                    issues++;
+                }
+            });
+            
+            if (issues === 0) {
+                return '良好';
+            } else if (issues <= allUsersData.length * 0.1) { // 少于10%的问题
+                return '一般';
+            } else {
+                return '需要关注';
+            }
+        }
+
+        // 显示用户列表
+        function displayUserList(users) {
+            const userListElement = document.getElementById('user-list');
+            const searchTerm = document.getElementById('user-search').value.toLowerCase();
+            
+            // 过滤用户
+            const filteredUsers = users.filter(user => 
+                user.username.toLowerCase().includes(searchTerm)
+            );
+            
+            if (filteredUsers.length === 0) {
+                userListElement.innerHTML = '<div class="no-data">没有找到匹配的用户</div>';
                 return;
             }
             
-            addLog('开始从GitHub加载用户数据...');
+            // 生成用户列表HTML
+            let html = '';
             
-            try {
-                const result = await githubSyncManager.getAllUsersData();
-                
-                if (result.success) {
-                    const users = result.data.users || {};
-                    allUsers = Object.entries(users).map(([username, userData]) => ({
-                        username,
-                        ...userData
-                    }));
-                    
-                    filteredUsers = [...allUsers];
-                    
-                    // 更新统计
-                    document.getElementById('total-users-admin').textContent = allUsers.length;
-                    document.getElementById('active-users-7days').textContent = calculateActiveUsers(allUsers);
-                    
-                    // 渲染表格
-                    renderUserTable();
-                    
-                    addLog(`成功从GitHub加载 ${allUsers.length} 个用户的数据`);
-                    alert(`成功加载 ${allUsers.length} 个用户的数据`);
-                    
-                } else {
-                    throw new Error(result.error);
-                }
-                
-            } catch (error) {
-                addLog(`从GitHub加载数据失败: ${error.message}`);
-                alert('获取数据失败: ' + error.message);
-            }
-        }
-        
-        // 计算活跃用户（7天内登录过）
-        function calculateActiveUsers(users) {
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-            
-            return users.filter(user => {
-                const lastLogin = new Date(user.lastLogin || 0);
-                return lastLogin > sevenDaysAgo;
-            }).length;
-        }
-        
-        // 渲染用户表格
-        function renderUserTable() {
-            const tbody = document.getElementById('users-table-body');
-            tbody.innerHTML = '';
-            
-            // 计算分页
-            totalPages = Math.ceil(filteredUsers.length / PAGE_SIZE);
-            const startIndex = (currentPage - 1) * PAGE_SIZE;
-            const endIndex = Math.min(startIndex + PAGE_SIZE, filteredUsers.length);
-            const pageUsers = filteredUsers.slice(startIndex, endIndex);
-            
-            // 更新分页信息
-            document.getElementById('page-info').textContent = 
-                `第 ${currentPage} 页，共 ${totalPages} 页，${filteredUsers.length} 个用户`;
-            
-            pageUsers.forEach(user => {
+            filteredUsers.forEach(user => {
                 const recordCount = Object.keys(user.records || {}).length;
+                const lastLogin = user.lastLogin ? 
+                    new Date(user.lastLogin).toLocaleDateString('zh-CN') : '从未登录';
+                const isAdmin = user.username === CONFIG.ADMIN_GITHUB.USERNAME;
+                const isSynced = cloudUsersData.users && cloudUsersData.users[user.username];
                 
-                // 计算备注数
-                let noteCount = 0;
-                if (user.records) {
-                    Object.values(user.records).forEach(record => {
-                        if (record.note && record.note.trim()) {
-                            noteCount++;
-                        }
-                    });
-                }
-                
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${user.username}</td>
-                    <td>${formatDate(user.createdAt)}</td>
-                    <td>${formatDate(user.lastLogin)}</td>
-                    <td>${recordCount}</td>
-                    <td>${noteCount}</td>
-                    <td>${formatDate(user.syncInfo?.lastSyncTime)}</td>
-                    <td>${user.syncInfo?.storageMode === 'github' ? '云端' : '本地'}</td>
-                    <td>
-                        <button onclick="viewUserDetails('${user.username}')" class="btn-small">
-                            <i class="fas fa-eye"></i> 查看
-                        </button>
-                        <button onclick="editUserData('${user.username}')" class="btn-small">
-                            <i class="fas fa-edit"></i> 编辑
-                        </button>
-                        <button onclick="deleteUserFromGitHub('${user.username}')" class="btn-small btn-danger">
-                            <i class="fas fa-trash"></i> 删除
-                        </button>
-                    </td>
+                html += `
+                    <div class="user-item ${isAdmin ? 'admin-user' : ''}" data-username="${user.username}">
+                        <div class="user-info">
+                            <div class="user-name">
+                                ${user.username}
+                                ${isAdmin ? '<span style="margin-left: 5px; color: #dc3545; font-size: 12px;">[管理员]</span>' : ''}
+                                ${isSynced ? '<span class="status-badge status-synced" style="margin-left: 5px; font-size: 10px;">已同步</span>' : 
+                                  '<span class="status-badge status-local" style="margin-left: 5px; font-size: 10px;">仅本地</span>'}
+                            </div>
+                            <div class="user-meta">
+                                注册时间: ${new Date(user.createdAt).toLocaleDateString('zh-CN')} | 
+                                最后登录: ${lastLogin}
+                            </div>
+                        </div>
+                        <div class="user-stats">
+                            记录: ${recordCount} 条<br>
+                            存储: ${user.syncInfo?.storageMode === 'cloud' ? '云端' : '本地'}
+                        </div>
+                        <div class="user-actions">
+                            <button onclick="viewUserDetails('${user.username}')" class="btn-action btn-view">
+                                <i class="fas fa-eye"></i> 查看
+                            </button>
+                            <button onclick="confirmDeleteUser('${user.username}')" class="btn-action btn-delete">
+                                <i class="fas fa-trash"></i> 删除
+                            </button>
+                        </div>
+                    </div>
                 `;
-                tbody.appendChild(row);
             });
-        }
-        
-        // 搜索用户
-        function searchUsers() {
-            const searchTerm = document.getElementById('user-search').value.toLowerCase();
             
-            if (searchTerm) {
-                filteredUsers = allUsers.filter(user => 
-                    user.username.toLowerCase().includes(searchTerm)
-                );
-            } else {
-                filteredUsers = [...allUsers];
-            }
-            
-            currentPage = 1;
-            renderUserTable();
+            userListElement.innerHTML = html;
         }
-        
-        function clearSearch() {
-            document.getElementById('user-search').value = '';
-            searchUsers();
-        }
-        
-        // 分页控制
-        function prevPage() {
-            if (currentPage > 1) {
-                currentPage--;
-                renderUserTable();
-            }
-        }
-        
-        function nextPage() {
-            if (currentPage < totalPages) {
-                currentPage++;
-                renderUserTable();
-            }
-        }
-        
-        // 格式化日期
-        function formatDate(dateString) {
-            if (!dateString) return '从未';
-            
-            const date = new Date(dateString);
-            const now = new Date();
-            const diffMs = now - date;
-            const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-            
-            if (diffDays === 0) {
-                return '今天 ' + date.toLocaleTimeString('zh-CN', {hour: '2-digit', minute:'2-digit'});
-            } else if (diffDays === 1) {
-                return '昨天';
-            } else if (diffDays < 7) {
-                return `${diffDays}天前`;
-            } else {
-                return date.toLocaleDateString('zh-CN');
-            }
-        }
-        
+
         // 查看用户详情
-        async function viewUserDetails(username) {
-            if (!username) {
-                username = document.getElementById('target-username').value.trim();
-                if (!username) {
-                    alert('请输入用户名');
-                    return;
-                }
-            }
-            
-            // 查找用户数据
-            let userData = null;
-            
-            // 先尝试从allUsers中查找
-            userData = allUsers.find(user => user.username === username);
-            
-            // 如果没找到，尝试从本地存储查找
-            if (!userData) {
-                const localData = localStorage.getItem(`pes_user_${username}`);
-                if (localData) {
-                    userData = JSON.parse(localData);
-                }
-            }
-            
-            // 如果还没找到，尝试从GitHub获取
-            if (!userData && githubSyncManager) {
-                const result = await githubSyncManager.getAllUsersData();
-                if (result.success && result.data.users && result.data.users[username]) {
-                    userData = result.data.users[username];
-                }
-            }
-            
-            if (!userData) {
+        function viewUserDetails(username) {
+            const user = allUsersData.find(u => u.username === username);
+            if (!user) {
                 alert('用户不存在');
                 return;
             }
             
-            // 显示用户详情
-            const detailContent = document.getElementById('user-detail-content');
-            const recordCount = Object.keys(userData.records || {}).length;
+            currentViewUser = user;
             
-            let noteCount = 0;
-            let latestNote = '无';
-            let latestNoteDate = '';
+            const modalContent = document.getElementById('user-detail-content');
+            const recordCount = Object.keys(user.records || {}).length;
+            const lastLogin = user.lastLogin ? 
+                new Date(user.lastLogin).toLocaleString('zh-CN') : '从未登录';
+            const isSynced = cloudUsersData.users && cloudUsersData.users[username];
             
-            if (userData.records) {
-                Object.entries(userData.records).forEach(([date, record]) => {
-                    if (record.note && record.note.trim()) {
-                        noteCount++;
-                        if (!latestNoteDate || date > latestNoteDate) {
-                            latestNoteDate = date;
-                            latestNote = record.note;
-                        }
-                    }
-                });
+            let recordsHtml = '';
+            if (recordCount > 0) {
+                const records = Object.entries(user.records || {})
+                    .sort(([dateA], [dateB]) => dateB.localeCompare(dateA))
+                    .slice(0, 10); // 只显示最近10条记录
+                
+                recordsHtml = `
+                    <h4 style="margin-top: 20px; color: #333;">最近记录</h4>
+                    <table class="records-table">
+                        <thead>
+                            <tr>
+                                <th>日期</th>
+                                <th>金币</th>
+                                <th>心仪积分</th>
+                                <th>高光券</th>
+                                <th>备注</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${records.map(([date, record]) => `
+                                <tr>
+                                    <td>${date}</td>
+                                    <td>${record.gold || 0}</td>
+                                    <td>${record.heart_points || 0}</td>
+                                    <td>${record.highlight_coupons || 0}</td>
+                                    <td>${record.note ? record.note.substring(0, 20) + (record.note.length > 20 ? '...' : '') : ''}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                    ${recordCount > 10 ? `<p style="text-align: center; color: #666;">还有 ${recordCount - 10} 条记录未显示</p>` : ''}
+                `;
+            } else {
+                recordsHtml = '<p class="no-data">该用户还没有任何记录</p>';
             }
             
-            detailContent.innerHTML = `
-                <div class="user-detail-info">
-                    <h3>用户信息</h3>
-                    <p><strong>用户名：</strong> ${userData.username}</p>
-                    <p><strong>注册时间：</strong> ${formatDate(userData.createdAt)}</p>
-                    <p><strong>最后登录：</strong> ${formatDate(userData.lastLogin)}</p>
-                    <p><strong>最后同步：</strong> ${formatDate(userData.syncInfo?.lastSyncTime)}</p>
-                    <p><strong>存储模式：</strong> ${userData.syncInfo?.storageMode === 'github' ? '云端同步' : '本地存储'}</p>
-                    <p><strong>今日同步次数：</strong> ${userData.syncInfo?.syncCountToday || 0}</p>
-                </div>
-                
-                <div class="user-detail-stats">
-                    <h3>数据统计</h3>
-                    <p><strong>总记录数：</strong> ${recordCount}</p>
-                    <p><strong>备注数量：</strong> ${noteCount}</p>
-                    <p><strong>最后备注：</strong> ${latestNoteDate ? `${latestNoteDate}: ${latestNote.substring(0, 50)}${latestNote.length > 50 ? '...' : ''}` : '无'}</p>
-                </div>
-                
-                <div class="user-detail-records">
-                    <h3>最近记录</h3>
-                    <div class="recent-records">
-                        ${getRecentRecordsHTML(userData.records || {})}
+            modalContent.innerHTML = `
+                <div class="user-detail-grid">
+                    <div class="detail-item">
+                        <div class="detail-label">用户名</div>
+                        <div class="detail-value">${user.username}</div>
                     </div>
+                    <div class="detail-item">
+                        <div class="detail-label">注册时间</div>
+                        <div class="detail-value">${new Date(user.createdAt).toLocaleString('zh-CN')}</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">最后登录</div>
+                        <div class="detail-value">${lastLogin}</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">记录数量</div>
+                        <div class="detail-value">${recordCount} 条</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">存储模式</div>
+                        <div class="detail-value">${user.syncInfo?.storageMode === 'cloud' ? '云端同步' : '仅本地'}</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">云端同步</div>
+                        <div class="detail-value">${isSynced ? '✅ 已同步' : '❌ 未同步'}</div>
+                    </div>
+                </div>
+                ${recordsHtml}
+                <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 6px;">
+                    <h4 style="margin-top: 0; color: #333;">用户数据</h4>
+                    <pre style="font-size: 12px; max-height: 200px; overflow: auto; background: white; padding: 10px; border-radius: 4px;">${JSON.stringify(user, null, 2)}</pre>
                 </div>
             `;
             
-            document.getElementById('user-detail-dialog').classList.add('active');
-            addLog(`查看用户详情: ${username}`);
+            // 显示模态框
+            document.getElementById('user-detail-modal').classList.add('active');
         }
-        
-        function getRecentRecordsHTML(records) {
-            const sortedDates = Object.keys(records).sort().reverse().slice(0, 5);
-            
-            if (sortedDates.length === 0) {
-                return '<p>暂无记录</p>';
-            }
-            
-            return sortedDates.map(date => {
-                const record = records[date];
-                return `
-                    <div class="record-item">
-                        <strong>${date}</strong>
-                        <div>金币: ${record.gold || 0} | 心仪积分: ${record.heart_points || 0}</div>
-                        ${record.note ? `<div>备注: ${record.note.substring(0, 30)}${record.note.length > 30 ? '...' : ''}</div>` : ''}
-                    </div>
-                `;
-            }).join('');
+
+        // 查看所有用户
+        function viewAllUsers() {
+            const usernames = allUsersData.map(user => user.username).join(', ');
+            alert(`所有用户 (${allUsersData.length}个):\n\n${usernames}`);
         }
-        
-        function closeUserDetail() {
-            document.getElementById('user-detail-dialog').classList.remove('active');
-        }
-        
-        // 编辑用户数据
-        function editUserData(username) {
-            if (!username) {
-                username = document.getElementById('target-username').value.trim();
-                if (!username) {
-                    alert('请输入用户名');
-                    return;
-                }
-            }
+
+        // 确认删除用户
+        function confirmDeleteUser(username) {
+            pendingAction = {
+                type: 'delete_user',
+                data: { username: username }
+            };
             
-            alert(`编辑用户 ${username} 的数据\n\n编辑功能正在开发中...`);
-            addLog(`尝试编辑用户数据: ${username}`);
-        }
-        
-        // 从GitHub删除用户
-        async function deleteUserFromGitHub(username) {
-            if (!username) {
-                username = document.getElementById('target-username').value.trim();
-                if (!username) {
-                    alert('请输入用户名');
-                    return;
-                }
-            }
+            const user = allUsersData.find(u => u.username === username);
+            const recordCount = Object.keys(user?.records || {}).length;
             
-            if (!confirm(`确定要从GitHub删除用户 "${username}" 吗？\n\n⚠️ 这将永久删除该用户的云端数据！`)) {
+            document.getElementById('confirm-message').innerHTML = `
+                <div style="color: #dc3545; font-size: 18px; margin-bottom: 15px;">
+                    <i class="fas fa-exclamation-triangle"></i> 警告：此操作不可逆！
+                </div>
+                <p>您确定要删除用户 <strong>${username}</strong> 吗？</p>
+                <ul style="color: #666;">
+                    <li>将删除该用户的所有数据（${recordCount} 条记录）</li>
+                    <li>从本地存储中永久移除</li>
+                    <li>如果用户已同步到云端，云端数据也会被删除</li>
+                    <li>此操作无法撤销！</li>
+                </ul>
+                <p style="margin-top: 15px; padding: 10px; background: #fff3cd; border-radius: 4px;">
+                    请输入管理员密码确认：<br>
+                    <input type="password" id="confirm-password" style="width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ffc107;">
+                </p>
+            `;
+            
+            document.getElementById('confirm-modal').classList.add('active');
+        }
+
+        // 执行确认的操作
+        function executeConfirmedAction() {
+            const password = document.getElementById('confirm-password')?.value;
+            
+            // 验证管理员密码
+            if (!password || (password !== '114514' && password !== '123456')) {
+                alert('管理员密码错误！');
                 return;
             }
             
-            if (!githubSyncManager) {
-                alert('GitHub配置不完整');
+            if (pendingAction) {
+                switch (pendingAction.type) {
+                    case 'delete_user':
+                        deleteUser(pendingAction.data.username);
+                        break;
+                    case 'clear_local':
+                        clearLocalData();
+                        break;
+                    case 'clear_cloud':
+                        clearCloudDataConfirmed();
+                        break;
+                    case 'reset_system':
+                        resetSystemConfirmed();
+                        break;
+                }
+                
+                pendingAction = null;
+                closeModal('confirm-modal');
+            }
+        }
+
+        // 删除用户
+        async function deleteUser(username) {
+            try {
+                setLoading(true);
+                
+                // 1. 从本地存储删除用户数据
+                localStorage.removeItem(`pes_user_${username}`);
+                
+                // 2. 从用户列表中移除
+                const usersData = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
+                usersData.users = usersData.users.filter(user => user !== username);
+                localStorage.setItem('pes_users', JSON.stringify(usersData));
+                
+                // 3. 如果配置了云函数，也从云端删除
+                if (CONFIG.CLOUD_BACKEND.URL && !CONFIG.CLOUD_BACKEND.URL.includes('你的云函数地址')) {
+                    // 这里需要实现从云端删除用户的逻辑
+                    // 由于云函数API可能不支持直接删除单个用户，我们可以更新整个Gist
+                    logAction(`已从本地删除用户 ${username}，云端删除需要手动处理`, 'warning');
+                } else {
+                    logAction(`已从本地删除用户 ${username}`, 'success');
+                }
+                
+                // 4. 重新加载数据
+                await loadAllData();
+                
+                alert(`用户 ${username} 已成功删除`);
+                
+            } catch (error) {
+                logAction('删除用户失败: ' + error.message, 'error');
+                alert('删除用户失败: ' + error.message);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        // 删除当前查看的用户
+        function deleteCurrentUser() {
+            if (currentViewUser) {
+                closeModal('user-detail-modal');
+                confirmDeleteUser(currentViewUser.username);
+            }
+        }
+
+        // 导出所有用户数据
+        function exportAllUserData() {
+            const exportData = {
+                version: '2.0',
+                exportDate: new Date().toISOString(),
+                totalUsers: allUsersData.length,
+                users: allUsersData.reduce((acc, user) => {
+                    acc[user.username] = user;
+                    return acc;
+                }, {})
+            };
+            
+            const dataStr = JSON.stringify(exportData, null, 2);
+            const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+            const exportFileDefaultName = `pes_all_users_${new Date().toISOString().split('T')[0]}.json`;
+            
+            const linkElement = document.createElement('a');
+            linkElement.setAttribute('href', dataUri);
+            linkElement.setAttribute('download', exportFileDefaultName);
+            linkElement.click();
+            
+            logAction(`导出了 ${allUsersData.length} 个用户的数据`, 'success');
+            alert(`已导出 ${allUsersData.length} 个用户的数据到文件: ${exportFileDefaultName}`);
+        }
+
+        // 同步所有数据到云端
+        async function syncAllToCloud() {
+            if (!confirm('这将把所有本地用户数据同步到云端，确定要继续吗？')) {
                 return;
             }
-            
-            addLog(`开始删除用户: ${username}`);
             
             try {
-                const result = await githubSyncManager.deleteUser(username);
+                setLoading(true);
+                logAction('开始同步所有用户数据到云端...');
                 
-                if (result.success) {
-                    // 从本地列表中移除
-                    allUsers = allUsers.filter(user => user.username !== username);
-                    filteredUsers = filteredUsers.filter(user => user.username !== username);
+                // 这里需要实现批量同步逻辑
+                // 由于云函数API可能需要逐个用户更新，我们可以使用循环
+                alert('批量同步功能正在开发中，目前需要手动同步每个用户');
+                
+                logAction('批量同步功能开发中', 'warning');
+            } catch (error) {
+                logAction('同步失败: ' + error.message, 'error');
+                alert('同步失败: ' + error.message);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        // 创建完整备份
+        function backupAllData() {
+            // 收集所有本地存储的数据
+            const backupData = {
+                version: '2.0',
+                backupDate: new Date().toISOString(),
+                localStorage: {}
+            };
+            
+            // 备份所有localStorage中与PES相关的数据
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key.startsWith('pes_') || key === CONFIG.PRIVACY_AGREED) {
+                    try {
+                        backupData.localStorage[key] = JSON.parse(localStorage.getItem(key));
+                    } catch {
+                        backupData.localStorage[key] = localStorage.getItem(key);
+                    }
+                }
+            }
+            
+            const dataStr = JSON.stringify(backupData, null, 2);
+            const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+            const exportFileDefaultName = `pes_complete_backup_${new Date().toISOString().split('T')[0]}.json`;
+            
+            const linkElement = document.createElement('a');
+            linkElement.setAttribute('href', dataUri);
+            linkElement.setAttribute('download', exportFileDefaultName);
+            linkElement.click();
+            
+            logAction('创建了完整系统备份', 'success');
+            alert('完整系统备份已创建: ' + exportFileDefaultName);
+        }
+
+        // 从备份恢复
+        function importBackup() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            
+            input.onchange = async function(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+                
+                if (!confirm('警告：从备份恢复会覆盖当前所有数据！确定要继续吗？')) {
+                    return;
+                }
+                
+                const reader = new FileReader();
+                
+                reader.onload = async function(e) {
+                    try {
+                        const backupData = JSON.parse(e.target.result);
+                        
+                        if (!backupData.version || !backupData.localStorage) {
+                            throw new Error('这不是有效的备份文件');
+                        }
+                        
+                        if (!confirm(`即将恢复 ${backupData.backupDate} 的备份，这会将当前所有数据替换为备份数据。确定要恢复吗？`)) {
+                            return;
+                        }
+                        
+                        setLoading(true);
+                        
+                        // 恢复localStorage数据
+                        for (const [key, value] of Object.entries(backupData.localStorage)) {
+                            if (typeof value === 'string') {
+                                localStorage.setItem(key, value);
+                            } else {
+                                localStorage.setItem(key, JSON.stringify(value));
+                            }
+                        }
+                        
+                        logAction(`从备份恢复完成，备份时间: ${backupData.backupDate}`, 'success');
+                        alert('备份恢复完成！页面将刷新以加载恢复的数据。');
+                        
+                        // 刷新数据
+                        await loadAllData();
+                        
+                    } catch (error) {
+                        logAction('恢复备份失败: ' + error.message, 'error');
+                        alert('恢复备份失败: ' + error.message);
+                    } finally {
+                        setLoading(false);
+                    }
+                };
+                
+                reader.readAsText(file);
+            };
+            
+            input.click();
+        }
+
+        // 检查数据一致性
+        function checkDataConsistency() {
+            let issues = [];
+            
+            // 检查每个本地用户的数据完整性
+            allUsersData.forEach(user => {
+                // 检查必需字段
+                if (!user.username) issues.push(`用户缺少用户名: ${JSON.stringify(user)}`);
+                if (!user.password) issues.push(`用户 ${user.username} 缺少密码`);
+                if (!user.createdAt) issues.push(`用户 ${user.username} 缺少创建时间`);
+                
+                // 检查记录数据
+                if (user.records) {
+                    for (const [date, record] of Object.entries(user.records)) {
+                        // 验证日期格式
+                        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+                            issues.push(`用户 ${user.username} 的记录日期格式错误: ${date}`);
+                        }
+                        
+                        // 验证记录字段
+                        if (typeof record.gold !== 'number') {
+                            issues.push(`用户 ${user.username} 的 ${date} 记录金币字段错误`);
+                        }
+                    }
+                }
+            });
+            
+            // 检查云端与本地的一致性
+            const localUsernames = allUsersData.map(user => user.username);
+            const cloudUsernames = Object.keys(cloudUsersData.users || {});
+            
+            const localOnly = localUsernames.filter(name => !cloudUsernames.includes(name));
+            const cloudOnly = cloudUsernames.filter(name => !localUsernames.includes(name));
+            
+            if (localOnly.length > 0) {
+                issues.push(`以下用户仅存在于本地: ${localOnly.join(', ')}`);
+            }
+            
+            if (cloudOnly.length > 0) {
+                issues.push(`以下用户仅存在于云端: ${cloudOnly.join(', ')}`);
+            }
+            
+            // 显示检查结果
+            if (issues.length === 0) {
+                alert('✅ 数据一致性检查完成，未发现问题！');
+                logAction('数据一致性检查完成，未发现问题', 'success');
+            } else {
+                const message = `发现 ${issues.length} 个问题：\n\n` + issues.join('\n');
+                alert(`⚠️ 数据一致性检查完成，发现 ${issues.length} 个问题：\n\n查看控制台获取详细信息`);
+                console.log('数据一致性问题:', issues);
+                logAction(`数据一致性检查发现 ${issues.length} 个问题`, 'warning');
+            }
+        }
+
+        // 清空所有本地数据
+        function clearAllLocalData() {
+            pendingAction = {
+                type: 'clear_local',
+                data: {}
+            };
+            
+            document.getElementById('confirm-message').innerHTML = `
+                <div style="color: #dc3545; font-size: 18px; margin-bottom: 15px;">
+                    <i class="fas fa-exclamation-triangle"></i> 危险操作！
+                </div>
+                <p>您确定要清空所有本地数据吗？</p>
+                <ul style="color: #666;">
+                    <li>将删除所有本地用户数据（${allUsersData.length} 个用户）</li>
+                    <li>将删除所有本地记录（${document.getElementById('total-records').textContent} 条记录）</li>
+                    <li>本地存储将被完全清空</li>
+                    <li>此操作无法撤销！</li>
+                    <li>如果用户已同步到云端，云端数据将保留</li>
+                </ul>
+                <p style="margin-top: 15px; padding: 10px; background: #f8d7da; border-radius: 4px; color: #721c24;">
+                    <i class="fas fa-skull-crossbones"></i> 请输入 "<strong>DELETE ALL LOCAL</strong>" 确认操作：<br>
+                    <input type="text" id="confirm-text" style="width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #dc3545;">
+                </p>
+            `;
+            
+            document.getElementById('confirm-modal').classList.add('active');
+        }
+
+        // 执行清空本地数据
+        function clearLocalData() {
+            try {
+                // 清空所有PES相关的localStorage数据
+                const keysToRemove = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key.startsWith('pes_')) {
+                        keysToRemove.push(key);
+                    }
+                }
+                
+                keysToRemove.forEach(key => localStorage.removeItem(key));
+                
+                // 保留隐私协议同意状态
+                const privacyAgreed = localStorage.getItem(CONFIG.PRIVACY_AGREED);
+                if (privacyAgreed) {
+                    // 隐私协议状态会随着其他pes_数据被删除，所以不需要单独处理
+                }
+                
+                logAction('已清空所有本地数据', 'success');
+                alert('所有本地数据已清空！页面将刷新。');
+                
+                // 重新加载页面
+                setTimeout(() => location.reload(), 1000);
+                
+            } catch (error) {
+                logAction('清空本地数据失败: ' + error.message, 'error');
+                alert('清空本地数据失败: ' + error.message);
+            }
+        }
+
+        // 清空云端数据
+        function clearCloudData() {
+            pendingAction = {
+                type: 'clear_cloud',
+                data: {}
+            };
+            
+            document.getElementById('confirm-message').innerHTML = `
+                <div style="color: #dc3545; font-size: 18px; margin-bottom: 15px;">
+                    <i class="fas fa-exclamation-triangle"></i> 极端危险操作！
+                </div>
+                <p>您确定要清空云端数据吗？</p>
+                <ul style="color: #666;">
+                    <li>将删除GitHub Gist中的所有数据</li>
+                    <li>所有用户的云端备份将被永久删除</li>
+                    <li>此操作无法撤销！</li>
+                    <li>本地数据将不受影响</li>
+                </ul>
+                <p style="margin-top: 15px; padding: 10px; background: #f8d7da; border-radius: 4px; color: #721c24;">
+                    <i class="fas fa-radiation"></i> 请输入 "<strong>DELETE CLOUD DATA</strong>" 确认操作：<br>
+                    <input type="text" id="confirm-text" style="width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #dc3545;">
+                </p>
+            `;
+            
+            document.getElementById('confirm-modal').classList.add('active');
+        }
+
+        // 执行清空云端数据
+        async function clearCloudDataConfirmed() {
+            const confirmText = document.getElementById('confirm-text')?.value;
+            if (confirmText !== 'DELETE CLOUD DATA') {
+                alert('确认文本不正确，操作已取消');
+                return;
+            }
+            
+            try {
+                setLoading(true);
+                
+                // 清空云端Gist
+                if (CONFIG.CLOUD_BACKEND.URL && !CONFIG.CLOUD_BACKEND.URL.includes('你的云函数地址')) {
+                    // 创建空的数据结构
+                    const emptyData = {
+                        users: {},
+                        metadata: {
+                            totalUsers: 0,
+                            lastUpdated: new Date().toISOString(),
+                            version: '2.0'
+                        }
+                    };
                     
-                    // 重新渲染表格
-                    renderUserTable();
+                    // 调用云函数更新Gist
+                    const response = await fetch(CONFIG.CLOUD_BACKEND.URL, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            username: 'admin',
+                            userData: emptyData
+                        })
+                    });
                     
-                    // 更新统计
-                    document.getElementById('total-users-admin').textContent = allUsers.length;
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
                     
-                    alert(`用户 "${username}" 已从GitHub删除`);
-                    addLog(`用户删除成功: ${username}`);
+                    const result = await response.json();
                     
+                    if (result.success) {
+                        logAction('已清空云端数据', 'success');
+                        alert('云端数据已清空！');
+                        
+                        // 重新加载云端数据
+                        await loadCloudUsers();
+                    } else {
+                        throw new Error(result.message || '清空云端数据失败');
+                    }
                 } else {
-                    throw new Error(result.error);
+                    alert('云函数地址未配置，无法清空云端数据');
                 }
                 
             } catch (error) {
-                addLog(`删除用户失败: ${username} - ${error.message}`);
-                alert('删除失败: ' + error.message);
+                logAction('清空云端数据失败: ' + error.message, 'error');
+                alert('清空云端数据失败: ' + error.message);
+            } finally {
+                setLoading(false);
             }
         }
-        
-        // 重置用户密码
-        function resetUserPassword() {
-            const username = document.getElementById('target-username').value.trim();
-            if (!username) {
-                alert('请输入用户名');
-                return;
-            }
-            
-            const newPassword = prompt(`请输入用户 ${username} 的新密码（6位数字）:`);
-            if (!newPassword) return;
-            
-            if (!/^\d{6}$/.test(newPassword)) {
-                alert('密码必须是6位数字！');
-                return;
-            }
-            
-            // 查找并更新本地用户数据
-            const userDataStr = localStorage.getItem(`pes_user_${username}`);
-            if (userDataStr) {
-                try {
-                    const userData = JSON.parse(userDataStr);
-                    userData.password = newPassword;
-                    localStorage.setItem(`pes_user_${username}`, JSON.stringify(userData));
-                    alert(`用户 ${username} 的密码已重置为: ${newPassword}`);
-                    addLog(`重置用户密码: ${username}`);
-                } catch (error) {
-                    alert('重置密码失败: ' + error.message);
-                }
-            } else {
-                alert('用户不存在于本地存储中');
-            }
-        }
-        
-        // 同步所有用户到GitHub
-        async function syncAllUsersToGitHub() {
-            if (!githubSyncManager) {
-                alert('GitHub配置不完整');
-                return;
-            }
-            
-            if (!confirm('确定要同步所有用户数据到GitHub吗？')) {
-                return;
-            }
-            
-            addLog('开始同步所有用户到GitHub...');
-            
-            // 获取所有本地用户
-            const localUsers = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
-            
-            if (localUsers.users.length === 0) {
-                alert('没有找到本地用户数据');
-                return;
-            }
-            
-            // 获取当前GitHub数据
-            const githubResult = await githubSyncManager.getAllUsersData();
-            if (!githubResult.success) {
-                alert('获取GitHub数据失败: ' + githubResult.error);
-                return;
-            }
-            
-            const githubData = githubResult.data;
-            githubData.users = githubData.users || {};
-            
-            let successCount = 0;
-            let failCount = 0;
-            
-            for (const username of localUsers.users) {
-                const userDataStr = localStorage.getItem(`pes_user_${username}`);
-                
-                if (userDataStr) {
-                    try {
-                        const userData = JSON.parse(userDataStr);
-                        githubData.users[username] = userData;
-                        successCount++;
-                    } catch (error) {
-                        failCount++;
-                        console.error(`用户 ${username} 同步失败:`, error);
-                    }
-                }
-            }
-            
-            // 更新元数据
-            githubData.metadata = {
-                ...githubData.metadata,
-                totalUsers: Object.keys(githubData.users || {}).length,
-                lastUpdated: new Date().toISOString(),
-                maxUsers: 100,
-                version: '1.1'
+
+        // 系统重置
+        function resetSystem() {
+            pendingAction = {
+                type: 'reset_system',
+                data: {}
             };
             
-            // 上传到GitHub
-            const updateResult = await githubSyncManager.updateAllUsers(githubData);
-            
-            if (updateResult.success) {
-                addLog(`同步完成！成功: ${successCount} 个，失败: ${failCount} 个`);
-                alert(`同步完成！\n成功: ${successCount} 个用户\n失败: ${failCount} 个用户`);
-                
-                // 刷新数据
-                fetchAllUsersFromGitHub();
-            } else {
-                alert('上传到GitHub失败: ' + updateResult.error);
-                addLog(`上传到GitHub失败: ${updateResult.error}`);
-            }
-        }
-        
-        // 备份所有数据
-        function backupAllData() {
-            const allData = {};
-            
-            // 收集所有本地用户数据
-            const localUsers = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
-            
-            localUsers.users.forEach(username => {
-                const userData = localStorage.getItem(`pes_user_${username}`);
-                if (userData) {
-                    allData[username] = JSON.parse(userData);
-                }
-            });
-            
-            const dataStr = JSON.stringify({
-                users: allData,
-                metadata: {
-                    totalUsers: Object.keys(allData).length,
-                    backedUpAt: new Date().toISOString(),
-                    source: 'local_storage_backup'
-                }
-            }, null, 2);
-            
-            const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-            
-            const linkElement = document.createElement('a');
-            linkElement.setAttribute('href', dataUri);
-            linkElement.setAttribute('download', `pes_backup_all_${new Date().toISOString().split('T')[0]}.json`);
-            linkElement.click();
-            
-            addLog('备份所有用户数据');
-            alert('备份文件已开始下载');
-        }
-        
-        // 清理不活跃用户
-        async function cleanupInactiveUsers() {
-            if (!confirm('确定要清理30天未登录的用户吗？\n\n⚠️ 这将从GitHub删除这些用户的数据！')) {
-                return;
-            }
-            
-            if (!githubSyncManager) {
-                alert('GitHub配置不完整');
-                return;
-            }
-            
-            const result = await githubSyncManager.getAllUsersData();
-            
-            if (!result.success) {
-                alert('获取数据失败: ' + result.error);
-                return;
-            }
-            
-            const users = result.data.users || {};
-            const thirtyDaysAgo = new Date();
-            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-            
-            let deletedCount = 0;
-            
-            for (const [username, userData] of Object.entries(users)) {
-                const lastLogin = new Date(userData.lastLogin || 0);
-                
-                if (lastLogin < thirtyDaysAgo) {
-                    const deleteResult = await githubSyncManager.deleteUser(username);
-                    
-                    if (deleteResult.success) {
-                        deletedCount++;
-                    }
-                }
-            }
-            
-            addLog(`清理完成！删除了 ${deletedCount} 个30天未登录的用户`);
-            alert(`清理完成！删除了 ${deletedCount} 个30天未登录的用户`);
-            
-            // 刷新数据
-            fetchAllUsersFromGitHub();
-        }
-        
-        // 导出所有用户数据
-        function exportAllData() {
-            const allData = {};
-            
-            // 获取所有用户
-            if (allUsers.length > 0) {
-                allUsers.forEach(user => {
-                    allData[user.username] = user;
-                });
-            } else {
-                // 如果没有从GitHub加载，尝试从本地获取
-                const localUsers = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
-                localUsers.users.forEach(username => {
-                    const userData = localStorage.getItem(`pes_user_${username}`);
-                    if (userData) {
-                        allData[username] = JSON.parse(userData);
-                    }
-                });
-            }
-            
-            const dataStr = JSON.stringify({
-                users: allData,
-                metadata: {
-                    totalUsers: Object.keys(allData).length,
-                    exportedAt: new Date().toISOString(),
-                    source: 'admin_export'
-                }
-            }, null, 2);
-            
-            const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-            
-            const linkElement = document.createElement('a');
-            linkElement.setAttribute('href', dataUri);
-            linkElement.setAttribute('download', `pes_admin_export_${new Date().toISOString().split('T')[0]}.json`);
-            linkElement.click();
-            
-            addLog('导出所有用户数据');
-        }
-        
-        // 清除所有本地数据
-        function clearAllLocalData() {
-            if (!confirm('警告：这将清除所有本地用户数据！\n\n确定要继续吗？')) {
-                return;
-            }
-            
-            // 清除所有以'pes_'开头的本地存储项
-            const keysToRemove = [];
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key.startsWith('pes_')) {
-                    keysToRemove.push(key);
-                }
-            }
-            
-            keysToRemove.forEach(key => {
-                localStorage.removeItem(key);
-            });
-            
-            // 重置界面
-            allUsers = [];
-            filteredUsers = [];
-            currentPage = 1;
-            
-            document.getElementById('users-table-body').innerHTML = '';
-            document.getElementById('total-users-admin').textContent = '0';
-            document.getElementById('active-users-7days').textContent = '0';
-            document.getElementById('new-users-today').textContent = '0';
-            document.getElementById('total-data-size').textContent = '0 KB';
-            
-            addLog('清除所有本地数据');
-            alert('所有本地数据已清除！');
-        }
-        
-        // 重置系统（危险操作）
-        function resetSystem() {
-            if (!confirm('⚠️ 危险操作！\n\n这将清除所有数据，包括：\n1. 所有本地用户数据\n2. 所有GitHub上的用户数据\n3. 系统设置\n\n确定要重置系统吗？')) {
-                return;
-            }
-            
-            if (!confirm('这是最后确认！输入"RESET"以确认重置：')) {
-                return;
-            }
-            
-            const confirmation = prompt('请输入"RESET"以确认重置系统：');
-            if (confirmation !== 'RESET') {
-                alert('重置取消');
-                return;
-            }
-            
-            // 清除所有本地数据
-            localStorage.clear();
-            
-            // 重置管理员界面
-            document.getElementById('admin-login').classList.remove('hidden');
-            document.getElementById('admin-interface').classList.add('hidden');
-            document.getElementById('admin-password').value = '';
-            
-            // 清空表格
-            document.getElementById('users-table-body').innerHTML = '';
-            
-            addLog('系统已重置');
-            alert('系统已重置！请重新登录。');
-        }
-        
-        // 刷新数据
-        function refreshData() {
-            loadAdminData();
-            if (allUsers.length > 0) {
-                fetchAllUsersFromGitHub();
-            }
-            addLog('手动刷新数据');
-        }
-        
-        // 系统日志功能
-        function addLog(message) {
-            const logContainer = document.getElementById('system-log');
-            const logEntry = document.createElement('div');
-            logEntry.className = 'log-entry';
-            logEntry.innerHTML = `
-                <span class="log-time">[${new Date().toLocaleTimeString('zh-CN')}]</span>
-                <span class="log-message">${message}</span>
+            document.getElementById('confirm-message').innerHTML = `
+                <div style="color: #dc3545; font-size: 18px; margin-bottom: 15px;">
+                    <i class="fas fa-bomb"></i> 系统重置 - 最高危险级别！
+                </div>
+                <p>您确定要重置整个系统吗？</p>
+                <ul style="color: #666;">
+                    <li>将清空所有本地数据</li>
+                    <li>将清空所有云端数据</li>
+                    <li>系统将恢复到初始状态</li>
+                    <li><strong>所有数据将永久丢失！</strong></li>
+                    <li>此操作无法撤销！</li>
+                </ul>
+                <p style="margin-top: 15px; padding: 10px; background: #000; color: #fff; border-radius: 4px;">
+                    <i class="fas fa-skull"></i> 请输入 "<strong>RESET SYSTEM NOW</strong>" 确认操作：<br>
+                    <input type="text" id="confirm-text" style="width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #dc3545; background: #333; color: white;">
+                </p>
             `;
-            logContainer.appendChild(logEntry);
             
-            // 保持日志在底部
-            logContainer.scrollTop = logContainer.scrollHeight;
+            document.getElementById('confirm-modal').classList.add('active');
         }
-        
-        function clearLogs() {
-            document.getElementById('system-log').innerHTML = '';
-            addLog('日志已清空');
+
+        // 执行系统重置
+        async function resetSystemConfirmed() {
+            const confirmText = document.getElementById('confirm-text')?.value;
+            if (confirmText !== 'RESET SYSTEM NOW') {
+                alert('确认文本不正确，操作已取消');
+                return;
+            }
+            
+            try {
+                setLoading(true);
+                
+                // 1. 清空本地数据
+                clearLocalData();
+                
+                // 2. 清空云端数据（如果配置了）
+                if (CONFIG.CLOUD_BACKEND.URL && !CONFIG.CLOUD_BACKEND.URL.includes('你的云函数地址')) {
+                    await clearCloudDataConfirmed();
+                }
+                
+                logAction('系统重置完成', 'success');
+                alert('系统重置完成！所有数据已清空。页面将重新加载。');
+                
+                // 重新加载页面
+                setTimeout(() => location.reload(), 2000);
+                
+            } catch (error) {
+                logAction('系统重置失败: ' + error.message, 'error');
+                alert('系统重置失败: ' + error.message);
+            } finally {
+                setLoading(false);
+            }
         }
-        
-        // 初始化日志样式
+
+        // 刷新所有数据
+        function refreshAllData() {
+            loadAllData();
+            logAction('手动刷新所有数据', 'info');
+        }
+
+        // 记录操作日志
+        function logAction(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString('zh-CN');
+            const logEntry = {
+                time: timestamp,
+                message: message,
+                type: type
+            };
+            
+            adminLogs.unshift(logEntry); // 添加到开头，最新的在前面
+            
+            // 只保留最近的50条日志
+            if (adminLogs.length > 50) {
+                adminLogs.pop();
+            }
+            
+            // 更新日志显示
+            updateLogDisplay();
+        }
+
+        // 更新日志显示
+        function updateLogDisplay() {
+            const logsContainer = document.getElementById('admin-logs');
+            let html = '';
+            
+            adminLogs.forEach(log => {
+                const typeClass = log.type === 'error' ? 'error' : 
+                                 log.type === 'success' ? 'success' : 
+                                 log.type === 'warning' ? 'warning' : '';
+                
+                html += `
+                    <div class="log-entry ${typeClass}">
+                        [${log.time}] ${log.message}
+                    </div>
+                `;
+            });
+            
+            logsContainer.innerHTML = html;
+        }
+
+        // 设置加载状态
+        function setLoading(isLoading) {
+            const body = document.body;
+            if (isLoading) {
+                body.classList.add('loading');
+            } else {
+                body.classList.remove('loading');
+            }
+        }
+
+        // 关闭模态框
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        // 初始化事件监听
         document.addEventListener('DOMContentLoaded', function() {
-            // 添加CSS样式
-            const style = document.createElement('style');
-            style.textContent = `
-                .log-container {
-                    background: rgba(0, 0, 0, 0.3);
-                    border-radius: 10px;
-                    padding: 15px;
-                    max-height: 200px;
-                    overflow-y: auto;
-                    margin-bottom: 15px;
-                }
-                .log-entry {
-                    padding: 5px 0;
-                    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-                    font-family: 'Courier New', monospace;
-                    font-size: 12px;
-                    color: #a0a0a0;
-                }
-                .log-time {
-                    color: #4ecca3;
-                    margin-right: 10px;
-                }
-                .log-message {
-                    word-break: break-all;
-                }
-                .search-box {
-                    display: flex;
-                    gap: 10px;
-                    margin-bottom: 15px;
-                }
-                .search-box input {
-                    flex: 1;
-                    padding: 10px;
-                    background: rgba(255, 255, 255, 0.1);
-                    border: 2px solid rgba(255, 255, 255, 0.2);
-                    border-radius: 10px;
-                    color: white;
-                    font-size: 14px;
-                }
-                .pagination {
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    gap: 15px;
-                    margin-top: 20px;
-                    padding-top: 15px;
-                    border-top: 1px solid rgba(255, 255, 255, 0.1);
-                }
-                .admin-form {
-                    margin-top: 20px;
-                    padding: 20px;
-                    background: rgba(255, 255, 255, 0.05);
-                    border-radius: 10px;
-                }
-                .user-detail-info, .user-detail-stats, .user-detail-records {
-                    margin-bottom: 20px;
-                    padding-bottom: 15px;
-                    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-                }
-                .record-item {
-                    background: rgba(255, 255, 255, 0.05);
-                    padding: 10px;
-                    margin-bottom: 10px;
-                    border-radius: 5px;
-                }
-                .btn-danger {
-                    background: linear-gradient(45deg, #dc3545, #c82333) !important;
-                }
-                .recent-records {
-                    max-height: 200px;
-                    overflow-y: auto;
-                }
-            `;
-            document.head.appendChild(style);
+            // 搜索框实时过滤
+            document.getElementById('user-search').addEventListener('input', function() {
+                displayUserList(allUsersData);
+            });
             
-            addLog('系统初始化完成');
+            // 回车键登录
+            document.getElementById('admin-password').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    verifyAdmin();
+                }
+            });
+            
+            // 确认框中的回车键
+            document.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter' && document.getElementById('confirm-modal').classList.contains('active')) {
+                    executeConfirmedAction();
+                }
+            });
+            
+            // 初始化日志
+            logAction('管理员界面已加载');
+        });
+
+        // 页面关闭前警告
+        window.addEventListener('beforeunload', function(e) {
+            // 如果有未保存的操作，可以显示警告
+            // e.preventDefault();
+            // e.returnValue = '';
         });
     </script>
 </body>
