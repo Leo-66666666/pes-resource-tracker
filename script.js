@@ -1,37 +1,16 @@
 // 配置验证（添加到文件开头，DOMContentLoaded之前）
 function validateConfig() {
     console.log('=== 配置验证 ===');
-    console.log('USERNAME:', CONFIG.ADMIN_GITHUB.USERNAME);
-    console.log('TOKEN 存在:', !!CONFIG.ADMIN_GITHUB.TOKEN);
-    console.log('TOKEN 长度:', CONFIG.ADMIN_GITHUB.TOKEN ? CONFIG.ADMIN_GITHUB.TOKEN.length : '空');
-    console.log('TOKEN 前10字符:', CONFIG.ADMIN_GITHUB.TOKEN ? CONFIG.ADMIN_GITHUB.TOKEN.substring(0, 10) + '...' : '空');
-    console.log('GIST_ID 存在:', !!CONFIG.ADMIN_GITHUB.GIST_ID);
+    console.log('云函数地址:', CONFIG.CLOUD_BACKEND.URL);
+    console.log('API路径:', CONFIG.CLOUD_BACKEND.API_PATHS);
+    console.log('GitHub用户名:', CONFIG.ADMIN_GITHUB.USERNAME);
     console.log('GIST_ID:', CONFIG.ADMIN_GITHUB.GIST_ID);
-    console.log('GIST_ID 长度:', CONFIG.ADMIN_GITHUB.GIST_ID ? CONFIG.ADMIN_GITHUB.GIST_ID.length : '空');
+    console.log('最大用户数:', CONFIG.MAX_USERS);
     console.log('=== 验证结束 ===');
 }
 
 // 立即执行验证
 setTimeout(validateConfig, 100);
-
-// 配置
-const CONFIG = {
-    // 管理员GitHub配置（需要你填写）
-    ADMIN_GITHUB: {
-        USERNAME: 'Leo-66666666',           // 你的GitHub用户名
-        TOKEN: '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',              // 你的GitHub Personal Access Token
-        GIST_ID: 'dc6328fd3c6af8f8e6ef3dee506fe57d'             // 存储所有用户数据的Gist ID
-    },
-    
-    // 应用配置
-    MAX_USERS: 100,
-    ADMIN_PASSWORD: '114514',   // 管理员密码（实际是114514，提示是123456）
-    SYNC_LIMIT_PER_DAY: 1,      // 每天同步限制次数
-    PRIVACY_AGREED: 'privacy_agreed',  // 隐私协议同意标识
-    
-    // 隐私提示
-    PRIVACY_WARNING: "⚠️ 注意：数据将存储在管理员GitHub中，请勿存储任何敏感个人信息！"
-};
 
 // 状态管理
 let currentUser = null;
@@ -44,162 +23,122 @@ let userData = {
     syncInfo: {
         lastSyncDate: '',
         syncCountToday: 0,
-        storageMode: 'local'  // 'local' 或 'github'
+        storageMode: 'local'  // 'local' 或 'cloud'
     },
     records: {}
 };
 
-// GitHub API管理器（使用CORS代理）
-class GitHubSyncManager {
+let cloudSyncManager = null;
+
+// 云函数同步管理器
+class CloudSyncManager {
     constructor() {
-        console.log('正在初始化GitHubSyncManager...');
-        this.config = CONFIG.ADMIN_GITHUB;
-        this.baseURL = 'https://api.github.com';
+        console.log('正在初始化CloudSyncManager...');
+        this.baseURL = CONFIG.CLOUD_BACKEND.URL;
+        this.apiPaths = CONFIG.CLOUD_BACKEND.API_PATHS;
         
         // 检查配置
-        if (!this.config.TOKEN || !this.config.GIST_ID) {
-            console.error('GitHub配置错误:');
-            console.error('- TOKEN:', this.config.TOKEN ? '已设置' : '未设置');
-            console.error('- GIST_ID:', this.config.GIST_ID ? '已设置' : '未设置');
-            throw new Error('GitHub配置不完整，请在CONFIG.ADMIN_GITHUB中设置TOKEN和GIST_ID');
+        if (!this.baseURL || this.baseURL.includes('你的云函数地址')) {
+            console.error('云函数配置错误:');
+            console.error('请设置正确的云函数地址');
+            throw new Error('云函数配置不完整，请在CONFIG.CLOUD_BACKEND中设置URL');
         }
         
-        console.log('配置验证通过:', {
-            tokenLength: this.config.TOKEN.length,
-            gistId: this.config.GIST_ID.substring(0, 8) + '...',
-            username: this.config.USERNAME
+        console.log('云函数配置验证通过:', {
+            baseURL: this.baseURL,
+            apiPaths: this.apiPaths
         });
         
-        // CORS代理列表
-        this.corsProxies = [
-            'https://corsproxy.io/?',               // 代理1
-            'https://api.codetabs.com/v1/proxy?quest=', // 代理2
-            'https://api.allorigins.win/raw?url=',  // 代理3
-        ];
-        this.currentProxyIndex = 0;
-        this.maxRetries = 3;
+        this.maxRetries = 2;
+        this.retryDelay = 1000; // 1秒
         
-        console.log('GitHubSyncManager初始化完成');
+        console.log('CloudSyncManager初始化完成');
     }
     
-    // 获取当前代理URL
-    getProxyUrl(targetUrl) {
-        const proxy = this.corsProxies[this.currentProxyIndex];
-        
-        if (proxy.includes('corsproxy.io')) {
-            return proxy + encodeURIComponent(targetUrl);
-        } else if (proxy.includes('allorigins.win')) {
-            return proxy + encodeURIComponent(targetUrl);
-        } else if (proxy.includes('codetabs.com')) {
-            return proxy + encodeURIComponent(targetUrl);
-        }
-        
-        console.warn('未找到匹配的代理，使用直接URL');
-        return targetUrl;
+    // 构建完整URL
+    buildUrl(path) {
+        return `${this.baseURL}${path}`;
     }
     
-    // 切换到下一个代理
-    rotateProxy() {
-        this.currentProxyIndex = (this.currentProxyIndex + 1) % this.corsProxies.length;
-        console.log(`切换到代理 ${this.currentProxyIndex + 1}: ${this.corsProxies[this.currentProxyIndex]}`);
-        return this.currentProxyIndex;
-    }
-    
-    // 使用代理发送请求
-    async fetchWithProxy(url, options = {}) {
-        console.log(`开始代理请求: ${url.substring(0, 50)}...`);
-        
-        for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
-            try {
-                const proxyUrl = this.getProxyUrl(url);
-                console.log(`尝试 ${attempt}/${this.maxRetries}: ${proxyUrl.substring(0, 80)}...`);
-                
-                // 准备请求头
-                const proxyOptions = {
-                    ...options,
-                    headers: {
-                        ...options.headers,
-                        'Accept': 'application/vnd.github.v3+json'
-                    },
-                    mode: 'cors',
-                    cache: 'no-cache'
-                };
-                
-                // 发送请求
-                const response = await fetch(proxyUrl, proxyOptions);
-                
-                console.log(`请求 ${attempt} 响应状态:`, response.status, response.statusText);
-                
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error(`HTTP错误 ${response.status}:`, errorText.substring(0, 200));
-                    
-                    // 如果是认证错误，可能是token问题
-                    if (response.status === 401 || response.status === 403) {
-                        throw new Error(`认证失败: ${response.status} - 请检查Token是否正确`);
-                    }
-                    
-                    // 如果是404，可能是Gist不存在
-                    if (response.status === 404) {
-                        throw new Error(`Gist不存在: ${this.config.GIST_ID}`);
-                    }
-                    
-                    // 其他错误，继续重试
-                    if (attempt < this.maxRetries) {
-                        console.log('重试中...');
-                        this.rotateProxy();
-                        await new Promise(resolve => setTimeout(resolve, 1000));
-                        continue;
-                    }
-                    
-                    throw new Error(`HTTP ${response.status}: ${errorText.substring(0, 100)}`);
+    // 发送请求（带重试）
+    async sendRequest(url, options = {}, retryCount = 0) {
+        try {
+            console.log(`发送请求到: ${url}`, options.method || 'GET');
+            
+            // 添加默认请求头
+            const requestOptions = {
+                ...options,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    ...options.headers
+                },
+                mode: 'cors',
+                cache: 'no-cache'
+            };
+            
+            const response = await fetch(url, requestOptions);
+            
+            console.log(`响应状态: ${response.status} ${response.statusText}`);
+            
+            if (!response.ok) {
+                // 如果是5xx错误，重试
+                if (response.status >= 500 && retryCount < this.maxRetries) {
+                    console.log(`服务器错误 ${response.status}，第${retryCount + 1}次重试...`);
+                    await new Promise(resolve => setTimeout(resolve, this.retryDelay));
+                    return this.sendRequest(url, options, retryCount + 1);
                 }
                 
-                console.log(`请求 ${attempt} 成功`);
-                return response;
+                // 其他错误，直接抛出
+                const errorText = await response.text();
+                console.error(`HTTP错误 ${response.status}:`, errorText.substring(0, 200));
                 
-            } catch (error) {
-                console.error(`尝试 ${attempt} 失败:`, error.message);
-                
-                if (attempt < this.maxRetries) {
-                    // 切换代理并重试
-                    this.rotateProxy();
-                    console.log('等待1秒后重试...');
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                } else {
-                    // 所有尝试都失败
-                    console.error('所有代理尝试都失败');
-                    throw new Error(`请求失败: ${error.message}`);
+                if (response.status === 401 || response.status === 403) {
+                    throw new Error('访问被拒绝，请检查云函数配置');
                 }
+                
+                if (response.status === 404) {
+                    throw new Error('云函数接口不存在，请检查路径配置');
+                }
+                
+                throw new Error(`HTTP ${response.status}: ${errorText.substring(0, 100)}`);
             }
+            
+            return response;
+            
+        } catch (error) {
+            console.error(`请求失败:`, error.message);
+            
+            // 网络错误，重试
+            if (retryCount < this.maxRetries && !error.message.includes('HTTP')) {
+                console.log(`网络错误，第${retryCount + 1}次重试...`);
+                await new Promise(resolve => setTimeout(resolve, this.retryDelay));
+                return this.sendRequest(url, options, retryCount + 1);
+            }
+            
+            throw error;
         }
     }
     
     // 测试连接
     async testConnection() {
-        console.log('开始测试GitHub连接...');
+        console.log('开始测试云函数连接...');
         
         try {
-            const testUrl = `${this.baseURL}/user`;
+            const testUrl = this.buildUrl(this.apiPaths.TEST || '/test');
             console.log('测试URL:', testUrl);
             
-            const response = await this.fetchWithProxy(testUrl, {
-                headers: {
-                    'Authorization': `Bearer ${this.config.TOKEN}`
-                }
+            const response = await this.sendRequest(testUrl, {
+                method: 'GET'
             });
             
-            if (!response.ok) {
-                throw new Error(`测试失败: ${response.status}`);
-            }
-            
-            const userData = await response.json();
-            console.log('连接测试成功，用户:', userData.login);
+            const result = await response.json();
+            console.log('连接测试结果:', result);
             
             return {
-                success: true,
-                user: userData.login,
-                message: 'GitHub连接成功'
+                success: result.success || false,
+                message: result.message || '连接测试完成',
+                data: result.data || null
             };
             
         } catch (error) {
@@ -207,7 +146,7 @@ class GitHubSyncManager {
             return {
                 success: false,
                 error: error.message,
-                message: 'GitHub连接失败'
+                message: '无法连接到云函数后端'
             };
         }
     }
@@ -217,195 +156,139 @@ class GitHubSyncManager {
         console.log('开始获取所有用户数据...');
         
         try {
-            if (!this.config.TOKEN || !this.config.GIST_ID) {
-                throw new Error('GitHub配置不完整');
-            }
+            const url = this.buildUrl(this.apiPaths.GIST || '/gist');
+            console.log('获取数据URL:', url);
             
-            const url = `${this.baseURL}/gists/${this.config.GIST_ID}`;
-            console.log('Gist URL:', url);
-            
-            const response = await this.fetchWithProxy(url, {
-                headers: {
-                    'Authorization': `Bearer ${this.config.TOKEN}`
-                }
+            const response = await this.sendRequest(url, {
+                method: 'GET'
             });
             
-            if (!response.ok) {
-                throw new Error(`GitHub API错误: ${response.status} ${response.statusText}`);
-            }
+            const result = await response.json();
+            console.log('获取数据结果:', result.success ? '成功' : '失败');
             
-            const gist = await response.json();
-            console.log('Gist获取成功:', {
-                id: gist.id,
-                文件数: Object.keys(gist.files || {}).length,
-                描述: gist.description,
-                更新时间: gist.updated_at
-            });
-            
-            // 检查是否有 users.json 文件
-            if (!gist.files || !gist.files['users.json']) {
-                console.warn('Gist中没有找到users.json文件，将创建新文件');
+            if (result.success) {
                 return {
                     success: true,
-                    data: { users: {}, metadata: { totalUsers: 0, version: '1.0' } },
-                    lastUpdated: new Date().toISOString(),
-                    isNew: true
+                    data: result.data || { users: {}, metadata: { totalUsers: 0, version: '1.0' } },
+                    lastUpdated: result.lastUpdated,
+                    totalUsers: result.totalUsers || 0,
+                    isNew: false
                 };
+            } else {
+                throw new Error(result.error || result.message || '获取数据失败');
             }
             
-            const content = JSON.parse(gist.files['users.json'].content);
-            console.log('解析成功，用户数量:', Object.keys(content.users || {}).length);
-            
-            return {
-                success: true,
-                data: content,
-                lastUpdated: gist.updated_at,
-                isNew: false
-            };
-            
         } catch (error) {
-            console.error('获取GitHub数据失败:', error);
+            console.error('获取数据失败:', error);
             return {
                 success: false,
                 error: error.message,
-                message: '获取数据失败'
+                message: '获取云端数据失败'
             };
         }
     }
     
-    // 更新用户数据到GitHub
-    async updateUserData(username, userData) {
-        console.log(`开始更新用户数据: ${username}`);
+    // 获取特定用户数据
+    async getUserData(username) {
+        console.log(`开始获取用户数据: ${username}`);
         
         try {
-            if (!this.config.TOKEN || !this.config.GIST_ID) {
-                throw new Error('GitHub配置不完整');
+            if (!username) {
+                throw new Error('用户名不能为空');
             }
             
-            // 先获取当前所有数据
-            console.log('获取现有数据...');
-            const allDataResult = await this.getAllUsersData();
+            const url = this.buildUrl(`${this.apiPaths.USER || '/user'}?username=${encodeURIComponent(username)}`);
+            console.log('获取用户数据URL:', url);
             
-            let allData;
-            if (!allDataResult.success) {
-                console.log('获取现有数据失败，创建新数据结构');
-                allData = {
-                    users: {},
-                    metadata: {
-                        totalUsers: 0,
-                        lastUpdated: new Date().toISOString(),
-                        maxUsers: CONFIG.MAX_USERS,
-                        version: '1.1'
-                    }
-                };
-            } else {
-                allData = allDataResult.data;
-            }
-            
-            // 更新或添加用户数据
-            allData.users = allData.users || {};
-            allData.users[username] = {
-                ...userData,
-                lastSync: new Date().toISOString()
-            };
-            
-            // 更新总用户数
-            allData.metadata = {
-                totalUsers: Object.keys(allData.users).length,
-                lastUpdated: new Date().toISOString(),
-                maxUsers: CONFIG.MAX_USERS,
-                version: '1.1'
-            };
-            
-            console.log('更新后数据:', {
-                总用户数: allData.metadata.totalUsers,
-                最大用户数: allData.metadata.maxUsers
+            const response = await this.sendRequest(url, {
+                method: 'GET'
             });
             
-            // 更新到GitHub
-            const url = `${this.baseURL}/gists/${this.config.GIST_ID}`;
-            console.log('更新Gist URL:', url);
+            const result = await response.json();
+            console.log('获取用户数据结果:', result.success ? '成功' : '失败');
             
-            const response = await this.fetchWithProxy(url, {
-                method: 'PATCH',
-                headers: {
-                    'Authorization': `Bearer ${this.config.TOKEN}`,
-                    'Content-Type': 'application/json'
-                },
+            if (result.success) {
+                return {
+                    success: true,
+                    data: result.data,
+                    exists: result.exists,
+                    message: result.message
+                };
+            } else {
+                throw new Error(result.error || result.message || '获取用户数据失败');
+            }
+            
+        } catch (error) {
+            console.error('获取用户数据失败:', error);
+            return {
+                success: false,
+                error: error.message,
+                message: '获取用户数据失败'
+            };
+        }
+    }
+    
+    // 更新用户数据到云端
+    async updateUserData(username, userData) {
+        console.log(`开始更新用户数据到云端: ${username}`);
+        
+        try {
+            if (!username || !userData) {
+                throw new Error('用户名和用户数据不能为空');
+            }
+            
+            const url = this.buildUrl(this.apiPaths.USER || '/user');
+            console.log('更新数据URL:', url);
+            
+            const response = await this.sendRequest(url, {
+                method: 'POST',
                 body: JSON.stringify({
-                    description: `实况足球资源记录 - ${new Date().toLocaleDateString('zh-CN')}`,
-                    files: {
-                        'users.json': {
-                            content: JSON.stringify(allData, null, 2)
-                        }
-                    }
+                    username: username,
+                    userData: userData
                 })
             });
             
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`更新失败: ${response.status} - ${errorText.substring(0, 200)}`);
+            const result = await response.json();
+            console.log('更新数据结果:', result.success ? '成功' : '失败');
+            
+            if (result.success) {
+                return {
+                    success: true,
+                    message: result.message || '数据同步成功',
+                    userCount: result.userCount || 0,
+                    gistUrl: result.gistUrl,
+                    lastUpdated: result.lastUpdated
+                };
+            } else {
+                throw new Error(result.error || result.message || '更新数据失败');
             }
             
-            const result = await response.json();
-            console.log('更新成功:', result.html_url);
-            
-            return {
-                success: true,
-                message: '数据同步成功',
-                userCount: allData.metadata.totalUsers,
-                gistUrl: result.html_url,
-                lastUpdated: result.updated_at
-            };
-            
         } catch (error) {
-            console.error('同步到GitHub失败:', error);
+            console.error('更新数据失败:', error);
             return {
                 success: false,
                 error: error.message,
-                message: '同步失败'
+                message: '同步到云端失败'
             };
         }
     }
 }
 
-// 初始化GitHub同步管理器
-function initGitHubSync() {
-    if (CONFIG.ADMIN_GITHUB.TOKEN && CONFIG.ADMIN_GITHUB.GIST_ID) {
-        githubSyncManager = new GitHubSyncManager();
-        console.log('GitHub同步管理器已初始化');
-        
-        // 测试连接
-        setTimeout(async () => {
-            const result = await githubSyncManager.testConnection();
-            if (result.success) {
-                console.log('GitHub连接测试成功:', result);
-            } else {
-                console.warn('GitHub连接测试失败:', result.message);
-            }
-        }, 1000);
-        
-    } else {
-        console.warn('GitHub配置不完整，同步功能不可用');
-    }
-}
-
-// 初始化GitHub同步管理器
-function initGitHubSync() {
-    console.log('初始化GitHub同步管理器...');
+// 初始化云函数同步管理器
+function initCloudSync() {
+    console.log('初始化云函数同步管理器...');
     
     try {
         // 验证配置
-        if (!CONFIG.ADMIN_GITHUB.TOKEN || !CONFIG.ADMIN_GITHUB.GIST_ID) {
-            console.warn('GitHub配置不完整，同步功能不可用');
-            console.warn('TOKEN:', CONFIG.ADMIN_GITHUB.TOKEN ? '已设置' : '未设置');
-            console.warn('GIST_ID:', CONFIG.ADMIN_GITHUB.GIST_ID ? '已设置' : '未设置');
+        if (!CONFIG.CLOUD_BACKEND.URL || CONFIG.CLOUD_BACKEND.URL.includes('你的云函数地址')) {
+            console.warn('云函数配置不完整，同步功能不可用');
+            console.warn('请设置正确的云函数地址');
             
             // 在界面上显示警告
             const syncBtn = document.getElementById('sync-button');
             if (syncBtn) {
                 syncBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> 配置错误';
-                syncBtn.title = '请检查GitHub配置';
+                syncBtn.title = '请设置云函数地址';
                 syncBtn.disabled = true;
             }
             
@@ -413,32 +296,46 @@ function initGitHubSync() {
         }
         
         // 创建管理器实例
-        githubSyncManager = new GitHubSyncManager();
-        console.log('GitHubSyncManager创建成功');
+        cloudSyncManager = new CloudSyncManager();
+        console.log('CloudSyncManager创建成功');
         
         // 测试连接
         setTimeout(async () => {
-            console.log('开始测试连接...');
-            const result = await githubSyncManager.testConnection();
+            console.log('开始测试云函数连接...');
+            const result = await cloudSyncManager.testConnection();
             
             const syncBtn = document.getElementById('sync-button');
             if (syncBtn) {
                 if (result.success) {
-                    syncBtn.innerHTML = '<i class="fas fa-sync-alt"></i> 同步到GitHub';
-                    syncBtn.title = '点击同步数据到GitHub';
+                    syncBtn.innerHTML = '<i class="fas fa-sync-alt"></i> 同步到云端';
+                    syncBtn.title = '点击同步数据到云端';
                     syncBtn.disabled = false;
-                    console.log('GitHub连接测试成功');
+                    console.log('云函数连接测试成功');
+                    
+                    // 更新状态显示
+                    const statusElement = document.getElementById('cloud-status');
+                    if (statusElement) {
+                        statusElement.innerHTML = '<i class="fas fa-check-circle"></i> 云端连接正常';
+                        statusElement.className = 'cloud-status connected';
+                    }
                 } else {
                     syncBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> 连接失败';
                     syncBtn.title = result.message;
                     syncBtn.disabled = true;
-                    console.warn('GitHub连接测试失败:', result.message);
+                    console.warn('云函数连接测试失败:', result.message);
+                    
+                    // 更新状态显示
+                    const statusElement = document.getElementById('cloud-status');
+                    if (statusElement) {
+                        statusElement.innerHTML = '<i class="fas fa-times-circle"></i> 云端连接失败';
+                        statusElement.className = 'cloud-status disconnected';
+                    }
                 }
             }
         }, 500);
         
     } catch (error) {
-        console.error('初始化GitHub同步管理器失败:', error);
+        console.error('初始化云函数同步管理器失败:', error);
         
         const syncBtn = document.getElementById('sync-button');
         if (syncBtn) {
@@ -469,8 +366,8 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // 初始化GitHub同步
-    initGitHubSync();
+    // 初始化云函数同步
+    initCloudSync();
     
     // 加载用户统计数据
     updateUserStats();
@@ -559,14 +456,14 @@ async function updateUserStats() {
         const usersData = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
         const localUserCount = usersData.users.length;
         
-        // 获取GitHub用户（如果配置了）
-        let githubUserCount = 0;
+        // 获取云端用户（如果配置了）
+        let cloudUserCount = 0;
         let activeTodayCount = 0;
         
-        if (githubSyncManager) {
-            const result = await githubSyncManager.getAllUsersData();
+        if (cloudSyncManager) {
+            const result = await cloudSyncManager.getAllUsersData();
             if (result.success) {
-                githubUserCount = Object.keys(result.data.users || {}).length;
+                cloudUserCount = result.totalUsers || Object.keys(result.data.users || {}).length;
                 
                 // 计算今日活跃用户
                 const today = new Date().toDateString();
@@ -579,8 +476,8 @@ async function updateUserStats() {
         }
         
         // 更新显示
-        document.getElementById('total-users-count').textContent = Math.max(localUserCount, githubUserCount);
-        document.getElementById('synced-users-count').textContent = githubUserCount;
+        document.getElementById('total-users-count').textContent = Math.max(localUserCount, cloudUserCount);
+        document.getElementById('synced-users-count').textContent = cloudUserCount;
         document.getElementById('active-today-count').textContent = activeTodayCount;
         document.getElementById('current-user-count').textContent = localUserCount;
         
@@ -675,6 +572,20 @@ async function login() {
         
         // 更新用户统计数据
         updateUserStats();
+        
+        // 尝试从云端加载用户数据（如果开启了云同步）
+        if (userData.syncInfo.storageMode === 'cloud' && cloudSyncManager) {
+            try {
+                const cloudResult = await cloudSyncManager.getUserData(username);
+                if (cloudResult.success && cloudResult.data) {
+                    // 合并云端数据（这里简单处理，实际可能需要更复杂的合并策略）
+                    console.log('发现云端数据，准备合并...');
+                    // 可以在这里实现数据合并逻辑
+                }
+            } catch (error) {
+                console.log('从云端加载数据失败，继续使用本地数据:', error.message);
+            }
+        }
         
     } catch (error) {
         alert('登录失败：' + error.message);
@@ -1256,24 +1167,24 @@ function updateStatCard(totalId, changeId, todayValue, monthChange, iconClass, r
     }
 }
 
-// 同步到GitHub
-async function syncToGitHub() {
+// 同步到云端
+async function syncToCloud() {
     if (!currentUser) {
         alert('请先登录！');
         return;
     }
     
-    if (!githubSyncManager) {
-        alert('GitHub同步功能未配置，请联系管理员！');
+    if (!cloudSyncManager) {
+        alert('云同步功能未配置，请联系管理员！');
         return;
     }
     
     // 检查存储模式
-    if (userData.syncInfo.storageMode !== 'github') {
-        if (!confirm('您当前是本地存储模式，切换到GitHub同步模式吗？\n\n切换后数据将上传到管理员GitHub。')) {
+    if (userData.syncInfo.storageMode !== 'cloud') {
+        if (!confirm('您当前是本地存储模式，切换到云端同步模式吗？\n\n切换后数据将上传到云端。')) {
             return;
         }
-        userData.syncInfo.storageMode = 'github';
+        userData.syncInfo.storageMode = 'cloud';
         localStorage.setItem(`pes_user_${currentUser}`, JSON.stringify(userData));
     }
     
@@ -1287,7 +1198,7 @@ async function syncToGitHub() {
     }
     
     // 确认同步
-    if (!confirm(`⚠️ 数据将同步到管理员GitHub\n\n${CONFIG.PRIVACY_WARNING}\n\n确定要同步吗？`)) {
+    if (!confirm(`⚠️ 数据将同步到云端\n\n${CONFIG.PRIVACY_WARNING}\n\n确定要同步吗？`)) {
         return;
     }
     
@@ -1305,8 +1216,8 @@ async function syncToGitHub() {
             lastSync: new Date().toISOString()
         };
         
-        // 调用GitHub API
-        const result = await githubSyncManager.updateUserData(currentUser, syncData);
+        // 调用云函数API
+        const result = await cloudSyncManager.updateUserData(currentUser, syncData);
         
         if (result.success) {
             // 更新本地同步信息
@@ -1587,11 +1498,12 @@ function showHelp() {
                     <li>系统会提示确认，确认后会覆盖当前数据</li>
                 </ol>
                 
-                <h4>GitHub同步</h4>
+                <h4>云端同步</h4>
                 <ol class="help-list steps">
                     <li>点击右上角<strong>"同步"</strong>按钮（深绿色）</li>
                     <li>每天限同步1次</li>
-                    <li>数据将存储在管理员GitHub仓库中</li>
+                    <li>数据将通过云函数存储在GitHub云端</li>
+                    <li><strong>注意：Token已移至后端，前端无需配置</strong></li>
                 </ol>
                 
                 <div class="warning">
@@ -1638,6 +1550,10 @@ function showHelp() {
                 
                 <h4>Q5: 管理员功能有什么作用？</h4>
                 <p>管理员可以查看所有用户数据、删除用户、导出全部数据。密码请询问系统管理员。</p>
+                
+                <h4>Q6: 云端同步和本地存储有什么区别？</h4>
+                <p>云端同步：数据存储在云函数后端的GitHub Gist中，可以在不同设备间同步，但每天有次数限制。<br>
+                   本地存储：数据仅存储在您的浏览器中，不会上传到云端，没有同步次数限制。</p>
             </div>
         </div>
     `;
@@ -1651,29 +1567,29 @@ function closeHelp() {
 
 // 隐私信息和关于我们
 function showPrivacyInfo() {
-    alert('隐私政策：\n\n1. 数据默认存储在浏览器本地\n2. 选择GitHub同步后，数据将存储在管理员GitHub仓库\n3. 管理员可以看到GitHub上的所有用户数据\n4. 请勿存储任何敏感个人信息\n5. 建议定期导出数据备份');
+    alert('隐私政策：\n\n1. 数据默认存储在浏览器本地\n2. 选择云端同步后，数据将通过云函数存储在GitHub Gist中\n3. 管理员可以看到GitHub上的所有用户数据\n4. 请勿存储任何敏感个人信息\n5. 建议定期导出数据备份');
 }
 
 function showAbout() {
-    alert('关于实况足球资源记录器：\n\n版本：v1.1\n功能：记录游戏资源、计算盈亏、数据备份\n说明：完全免费，仅供学习交流使用\n作者：实况足球爱好者\n更新日期：2024年');
+    alert('关于实况足球资源记录器：\n\n版本：v2.0（使用云函数后端）\n功能：记录游戏资源、计算盈亏、数据备份和云端同步\n说明：完全免费，仅供学习交流使用\n作者：实况足球爱好者\n更新日期：2024年\n后端架构：腾讯云函数 + GitHub API');
 }
 
-// 测试GitHub连接
-async function testGitHubConnection() {
-    console.log('=== 手动测试GitHub连接 ===');
+// 测试云函数连接
+async function testCloudConnection() {
+    console.log('=== 手动测试云函数连接 ===');
     
-    if (!githubSyncManager) {
-        alert('GitHub同步管理器未初始化');
+    if (!cloudSyncManager) {
+        alert('云函数同步管理器未初始化');
         return;
     }
     
     try {
         // 测试基本连接
-        const testResult = await githubSyncManager.testConnection();
+        const testResult = await cloudSyncManager.testConnection();
         console.log('连接测试结果:', testResult);
         
         // 测试Gist访问
-        const gistResult = await githubSyncManager.getAllUsersData();
+        const gistResult = await cloudSyncManager.getAllUsersData();
         console.log('Gist访问结果:', gistResult);
         
         alert(`测试结果:\n\n1. 连接测试: ${testResult.success ? '✓ 成功' : '✗ 失败'}\n   ${testResult.message}\n\n2. Gist访问: ${gistResult.success ? '✓ 成功' : '✗ 失败'}\n   ${gistResult.message || gistResult.error}`);
@@ -1683,3 +1599,7 @@ async function testGitHubConnection() {
         alert('测试失败: ' + error.message);
     }
 }
+
+// 修改之前的syncToGitHub函数名为syncToCloud（已经修改）
+// 修改之前的syncToGitHub调用为syncToCloud调用（已经修改）
+// 修改界面上的相关文本显示
