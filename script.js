@@ -298,16 +298,9 @@ function initCloudSync() {
         // 验证配置
         if (!CONFIG.CLOUD_BACKEND.URL || CONFIG.CLOUD_BACKEND.URL.includes('你的云函数地址')) {
             console.warn('云函数配置不完整，同步功能不可用');
-            console.warn('请设置正确的云函数地址');
             
             // 在界面上显示警告
-            const syncBtn = document.getElementById('sync-button');
-            if (syncBtn) {
-                syncBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> 配置错误';
-                syncBtn.title = '请设置云函数地址';
-                syncBtn.disabled = true;
-            }
-            
+            updateCloudStatus('未配置', 'warning');
             return;
         }
         
@@ -320,44 +313,83 @@ function initCloudSync() {
             console.log('开始测试云函数连接...');
             const result = await cloudSyncManager.testConnection();
             
-            const syncBtn = document.getElementById('sync-button');
-            if (syncBtn) {
-                if (result.success) {
-                    syncBtn.innerHTML = '<i class="fas fa-sync-alt"></i> 同步到云端';
+            // 更新云端状态显示
+            if (result.success) {
+                updateCloudStatus('已连接', 'success');
+                console.log('云函数连接测试成功:', result.message);
+                
+                // 更新同步按钮状态
+                const syncBtn = document.getElementById('sync-button');
+                if (syncBtn) {
+                    syncBtn.innerHTML = '<i class="fas fa-cloud"></i> 同步到云端';
                     syncBtn.title = '点击同步数据到云端';
                     syncBtn.disabled = false;
-                    console.log('云函数连接测试成功');
-                    
-                    // 更新状态显示
-                    const statusElement = document.getElementById('cloud-status');
-                    if (statusElement) {
-                        statusElement.innerHTML = '<i class="fas fa-check-circle"></i> 云端连接正常';
-                        statusElement.className = 'cloud-status connected';
-                    }
-                } else {
+                }
+            } else {
+                updateCloudStatus('连接失败', 'error');
+                console.warn('云函数连接测试失败:', result.message);
+                
+                // 更新同步按钮状态
+                const syncBtn = document.getElementById('sync-button');
+                if (syncBtn) {
                     syncBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> 连接失败';
                     syncBtn.title = result.message;
                     syncBtn.disabled = true;
-                    console.warn('云函数连接测试失败:', result.message);
-                    
-                    // 更新状态显示
-                    const statusElement = document.getElementById('cloud-status');
-                    if (statusElement) {
-                        statusElement.innerHTML = '<i class="fas fa-times-circle"></i> 云端连接失败';
-                        statusElement.className = 'cloud-status disconnected';
-                    }
                 }
             }
         }, 500);
         
     } catch (error) {
         console.error('初始化云函数同步管理器失败:', error);
+        updateCloudStatus('初始化失败', 'error');
+    }
+}
+
+// 更新云端状态显示
+function updateCloudStatus(status, type = 'info') {
+    console.log('更新云端状态:', status, type);
+    
+    // 更新登录界面的状态显示
+    const cloudStatusText = document.getElementById('cloud-status-text');
+    if (cloudStatusText) {
+        cloudStatusText.textContent = status;
         
-        const syncBtn = document.getElementById('sync-button');
-        if (syncBtn) {
-            syncBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> 初始化失败';
-            syncBtn.title = error.message;
-            syncBtn.disabled = true;
+        // 根据类型设置颜色
+        const container = document.getElementById('cloud-status-container');
+        if (container) {
+            container.className = 'stat-item';
+            if (type === 'success') container.classList.add('status-success');
+            if (type === 'error') container.classList.add('status-error');
+            if (type === 'warning') container.classList.add('status-warning');
+        }
+    }
+    
+    // 更新注册界面的状态显示
+    const registerStatusText = document.getElementById('register-cloud-status-text');
+    if (registerStatusText) {
+        registerStatusText.textContent = status;
+        
+        const registerContainer = document.getElementById('register-cloud-status');
+        if (registerContainer) {
+            registerContainer.classList.remove('hidden');
+            registerContainer.className = 'cloud-status-hint';
+            if (type === 'success') registerContainer.classList.add('status-success');
+            if (type === 'error') registerContainer.classList.add('status-error');
+            if (type === 'warning') registerContainer.classList.add('status-warning');
+        }
+    }
+    
+    // 更新主界面的状态显示
+    const mainStatusText = document.getElementById('cloud-status-text');
+    if (mainStatusText) {
+        mainStatusText.textContent = status;
+        
+        const mainContainer = document.getElementById('cloud-status');
+        if (mainContainer) {
+            mainContainer.className = 'cloud-status-indicator';
+            if (type === 'success') mainContainer.classList.add('connected');
+            if (type === 'error') mainContainer.classList.add('disconnected');
+            if (type === 'warning') mainContainer.classList.add('warning');
         }
     }
 }
