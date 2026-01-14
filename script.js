@@ -120,36 +120,52 @@ class CloudSyncManager {
         }
     }
     
-    // 测试连接
-    async testConnection() {
-        console.log('开始测试云函数连接...');
+   // 测试连接
+async testConnection() {
+    console.log('开始测试云函数连接...');
+    
+    try {
+        const testUrl = `${this.baseURL}/test`;
+        console.log('测试URL:', testUrl);
         
-        try {
-            const testUrl = this.buildUrl(this.apiPaths.TEST || '/test');
-            console.log('测试URL:', testUrl);
-            
-            const response = await this.sendRequest(testUrl, {
-                method: 'GET'
-            });
-            
-            const result = await response.json();
-            console.log('连接测试结果:', result);
-            
+        const response = await fetch(testUrl, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        console.log('响应状态:', response.status, response.statusText);
+        
+        const result = await response.json();
+        console.log('完整响应:', result);
+        
+        // 检查响应结构
+        if (result.success) {
+            // 云函数返回的结构是 {success: true, status: 200, data: {...}, message: '...'}
             return {
-                success: result.success || false,
-                message: result.message || '连接测试完成',
-                data: result.data || null
+                success: true,
+                message: result.message,
+                data: result.data, // 这里包含了GitHub用户信息
+                status: result.status
             };
-            
-        } catch (error) {
-            console.error('连接测试失败:', error);
+        } else {
             return {
                 success: false,
-                error: error.message,
-                message: '无法连接到云函数后端'
+                error: result.error,
+                message: result.message
             };
         }
+        
+    } catch (error) {
+        console.error('连接测试失败:', error);
+        return {
+            success: false,
+            error: error.message,
+            message: '无法连接到云函数后端'
+        };
     }
+}
     
     // 获取所有用户数据
     async getAllUsersData() {
