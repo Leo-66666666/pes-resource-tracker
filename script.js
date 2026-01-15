@@ -710,7 +710,8 @@ async function register() {
     const username = document.getElementById('reg-username').value.trim();
     const password = document.getElementById('reg-password').value.trim();
     const confirm = document.getElementById('reg-confirm').value.trim();
-    const storageMode = document.querySelector('input[name="storage"]:checked').value;
+    // 所有用户默认使用本地存储
+    const storageMode = 'local';
     
     if (!username || !password || !confirm) {
         alert('请填写所有字段！');
