@@ -566,7 +566,7 @@
 
             <!-- 主要管理区域 -->
             <div class="admin-sections">
-                <!-- 用户管理 -->
+                <!-- 在 .admin-sections 内部，替换用户管理部分 -->
                 <div class="admin-section">
                     <div class="section-header">
                         <h3 class="section-title"><i class="fas fa-user-cog"></i> 用户管理</h3>
@@ -574,21 +574,25 @@
                             <span id="user-count-display">0</span> 个用户
                         </div>
                     </div>
-                    
-                    <!-- 用户搜索 -->
-                    <div style="margin-bottom: 15px;">
-                        <input type="text" id="user-search" placeholder="搜索用户名..." 
-                               style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                    <!-- 用户搜索和状态 -->
+                    <div style="margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+                        <input type="text" id="user-search" placeholder="搜索用户名..." style="flex: 1; min-width: 200px; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                        <div style="display: flex; align-items: center;">
+                            <span class="status-badge status-success" title="云端用户名缓存状态">
+                                <i class="fas fa-sync"></i> <span id="cache-status">缓存: 新鲜</span>
+                            </span>
+                        </div>
                     </div>
-                    
                     <!-- 用户列表 -->
                     <div class="user-list" id="user-list">
                         <!-- 用户列表会在这里动态生成 -->
                         <div class="no-data">正在加载用户数据...</div>
                     </div>
-                    
                     <!-- 用户操作 -->
                     <div class="data-actions">
+                        <button onclick="refreshUsernameCache()" class="btn-admin btn-sync-all">
+                            <i class="fas fa-sync-alt"></i> 刷新用户名缓存
+                        </button>
                         <button onclick="viewAllUsers()" class="btn-admin btn-view">
                             <i class="fas fa-list"></i> 查看所有用户
                         </button>
