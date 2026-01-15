@@ -102,18 +102,18 @@
         <div id="register-section" class="section hidden">
             <div class="login-container">
                 <h1><i class="fas fa-user-plus"></i> 注册新账户</h1>
+                <!-- 替换注册表单区域 (约在第300-380行) -->
                 <div class="login-form">
                     <h2>创建账户</h2>
-                    
                     <!-- 用户数提示 -->
                     <div class="user-limit-warning">
                         <i class="fas fa-info-circle"></i>
                         当前已注册 <span id="current-user-count">0</span>/100 用户
                     </div>
-                    
                     <div class="form-group">
-                        <input type="text" id="reg-username" placeholder="用户名（英文、数字、下划线）" required>
+                        <input type="text" id="reg-username" placeholder="用户名（3-15个字符，字母、数字、下划线）" required>
                         <div class="input-hint">用户名唯一，注册后不可修改</div>
+                        <div id="username-status" class="input-status"></div>
                     </div>
                     <div class="form-group">
                         <input type="password" id="reg-password" placeholder="6位数字密码" pattern="\d{6}" required>
@@ -122,15 +122,11 @@
                     <div class="form-group">
                         <input type="password" id="reg-confirm" placeholder="确认密码" pattern="\d{6}" required>
                     </div>
-                    
-                    <!-- 本地存储提示 -->
-                    <div class="storage-info">
-                        <div class="info-box">
-                            <i class="fas fa-info-circle"></i>
-                            <strong>数据存储说明：</strong> 您的数据将默认保存在本地浏览器中。如需在多设备间同步，可使用顶部"同步"按钮上传到云端。
-                        </div>
+                    <!-- 云端状态提示 -->
+                    <div id="register-cloud-status" class="cloud-status-hint hidden">
+                        <i class="fas fa-info-circle"></i>
+                        <span>云端服务状态：<span id="register-cloud-status-text">检测中...</span></span>
                     </div>
-                    
                     <button onclick="register()">注册</button>
                     <button onclick="showLogin()" class="secondary">返回登录</button>
                 </div>
