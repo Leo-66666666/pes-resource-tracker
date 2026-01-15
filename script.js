@@ -1321,7 +1321,7 @@ function updateStatCard(totalId, changeId, todayValue, monthChange, iconClass, r
     }
 }
 
-// 同步到云端
+// 替换整个 syncToCloud 函数 (大约在900行)
 async function syncToCloud() {
     if (!currentUser) {
         alert('请先登录！');
@@ -1333,16 +1333,7 @@ async function syncToCloud() {
         return;
     }
     
-    // 检查存储模式
-    if (userData.syncInfo.storageMode !== 'cloud') {
-        if (!confirm('您当前是本地存储模式，切换到云端同步模式吗？\n\n切换后数据将上传到云端。')) {
-            return;
-        }
-        userData.syncInfo.storageMode = 'cloud';
-        localStorage.setItem(`pes_user_${currentUser}`, JSON.stringify(userData));
-    }
-    
-    // 检查同步限制
+    // 检查同步限制（但不依赖存储模式）
     const syncInfo = userData.syncInfo || {};
     const today = new Date().toDateString();
     
@@ -1351,8 +1342,21 @@ async function syncToCloud() {
         return;
     }
     
-    // 确认同步
-    if (!confirm(`⚠️ 数据将同步到云端\n\n${CONFIG.PRIVACY_WARNING}\n\n确定要同步吗？`)) {
+    // 显示确认对话框，强调这是手动上传
+    const confirmMsg = `🔒 数据同步提示
+
+您即将手动将数据上传到云端，以便在多设备间同步。
+
+${CONFIG.PRIVACY_WARNING}
+
+上传后：
+• 您的数据将被存储在管理员的GitHub Gist中
+• 管理员可以查看这些数据
+• 本操作不影响您的默认存储方式（数据仍保存在本地）
+
+确定要上传数据到云端吗？`;
+
+    if (!confirm(confirmMsg)) {
         return;
     }
     
@@ -1360,7 +1364,7 @@ async function syncToCloud() {
     const syncBtn = document.getElementById('sync-button');
     const originalText = syncBtn.innerHTML;
     const originalDisabled = syncBtn.disabled;
-    syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 同步中...';
+    syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 上传中...';
     syncBtn.disabled = true;
     
     try {
@@ -1370,21 +1374,21 @@ async function syncToCloud() {
             lastSync: new Date().toISOString()
         };
         
-        // 调用云函数API
+        // 调用云函数API上传数据
         const result = await cloudSyncManager.updateUserData(currentUser, syncData);
         
         if (result.success) {
-            // 更新本地同步信息
+            // 更新本地同步信息（仅记录同步行为，不改变存储模式）
             if (!userData.syncInfo) {
                 userData.syncInfo = {};
             }
             
+            // 更新同步次数和日期
             if (syncInfo.lastSyncDate !== today) {
                 userData.syncInfo.syncCountToday = 1;
             } else {
                 userData.syncInfo.syncCountToday = (syncInfo.syncCountToday || 0) + 1;
             }
-            
             userData.syncInfo.lastSyncDate = today;
             userData.syncInfo.lastSyncTime = new Date().toISOString();
             
@@ -1395,21 +1399,21 @@ async function syncToCloud() {
             updateSyncStatus();
             updateDataSourceIndicator('synced');
             
-            alert(`✅ 同步成功！\n\n• 总用户数: ${result.userCount}/${CONFIG.MAX_USERS}\n• 今日剩余同步次数: ${CONFIG.SYNC_LIMIT_PER_DAY - userData.syncInfo.syncCountToday}\n\n数据已安全存储在云端！`);
+            alert(`✅ 数据上传成功！
+• 总用户数: ${result.userCount}/${CONFIG.MAX_USERS}
+• 今日剩余上传次数: ${CONFIG.SYNC_LIMIT_PER_DAY - userData.syncInfo.syncCountToday}
+数据已安全上传到云端，您的默认存储方式仍为本地。`);
             
             // 更新用户统计数据
             updateUserStats();
-            
         } else {
             throw new Error(result.error);
         }
-        
     } catch (error) {
-        console.error('同步失败:', error);
-        alert(`❌ 同步失败: ${error.message}\n\n数据已保存在本地，请稍后重试。`);
-        
+        console.error('上传失败:', error);
+        alert(`❌ 上传失败: ${error.message}
+数据仍然安全地保存在您的本地设备中，请稍后重试。`);
         updateDataSourceIndicator('local');
-        
     } finally {
         // 恢复按钮状态
         syncBtn.innerHTML = originalText;
@@ -1442,17 +1446,28 @@ function updateSyncStatus() {
     }
 }
 
-// 更新数据来源指示器
+// 替换 updateDataSourceIndicator 函数 (大约在1050行)
 function updateDataSourceIndicator(source) {
     document.getElementById('data-source-local').classList.add('hidden');
     document.getElementById('data-source-synced').classList.add('hidden');
     document.getElementById('data-source-outdated').classList.add('hidden');
     
+    // 所有用户默认显示本地存储
     if (source === 'local') {
         document.getElementById('data-source-local').classList.remove('hidden');
-    } else if (source === 'synced') {
-        document.getElementById('data-source-synced').classList.remove('hidden');
-    } else if (source === 'outdated') {
+    } 
+    // 如果是今天同步的，显示已同步
+    else if (source === 'synced') {
+        const syncInfo = userData.syncInfo || {};
+        const today = new Date().toDateString();
+        if (syncInfo.lastSyncDate === today) {
+            document.getElementById('data-source-synced').classList.remove('hidden');
+        } else {
+            document.getElementById('data-source-outdated').classList.remove('hidden');
+        }
+    }
+    // 如果是过期的同步状态，显示未同步
+    else if (source === 'outdated') {
         document.getElementById('data-source-outdated').classList.remove('hidden');
     }
 }
@@ -1652,16 +1667,18 @@ function showHelp() {
                     <li>系统会提示确认，确认后会覆盖当前数据</li>
                 </ol>
                 
+                // 在 showHelp() 函数中找到云端同步部分，替换为:
                 <h4>云端同步</h4>
                 <ol class="help-list steps">
                     <li>点击右上角<strong>"同步"</strong>按钮（深绿色）</li>
-                    <li>每天限同步1次</li>
-                    <li>数据将通过云函数存储在GitHub云端</li>
-                    <li><strong>注意：Token已移至后端，前端无需配置</strong></li>
+                    <li>每天限上传1次</li>
+                    <li>数据将临时上传到云端，管理员可以访问</li>
+                    <li><strong>重要：</strong>您的数据默认保存在本地，上传是手动操作</li>
+                    <li><strong>请勿</strong>上传任何敏感或个人信息</li>
                 </ol>
                 
                 <div class="warning">
-                    <p><i class="fas fa-exclamation-triangle"></i> <strong>警告：</strong>导入数据会覆盖当前的所有记录，请谨慎操作！</p>
+                    <p><i class="fas fa-exclamation-triangle"></i> <strong>警告：</strong>上传到云端的数据管理员可以看到，请仅上传游戏资源数据。</p>
                 </div>
             </div>
             
