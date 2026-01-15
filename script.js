@@ -506,6 +506,28 @@ function initializeUserDataStructure() {
 }
 
 function continueInitialization() {
+    // 修复所有用户的数据结构
+    try {
+        const usersData = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
+        if (usersData.users && Array.isArray(usersData.users)) {
+            usersData.users.forEach(username => {
+                try {
+                    const userDataStr = localStorage.getItem(`pes_user_${username}`);
+                    if (userDataStr) {
+                        const userData = JSON.parse(userDataStr);
+                        validateAndFixUserData(username, userData);
+                    }
+                } catch (e) {
+                    console.error(`修复用户 ${username} 数据时出错:`, e);
+                }
+            });
+        }
+    } catch (e) {
+        console.error('修复用户数据结构时出错:', e);
+        // 重置用户列表
+        localStorage.setItem('pes_users', JSON.stringify({users: [], lastUpdated: new Date().toISOString()}));
+    }
+    
     // 初始化用户数据结构
     initializeUserDataStructure();
     
@@ -619,6 +641,9 @@ async function login() {
         // 设置当前用户
         currentUser = username;
         userData = storedData;
+        
+        // 验证并修复用户数据结构
+        userData = validateAndFixUserData(username, userData);
 
         // 确保用户数据结构完整
         ensureUserDataStructure(userData);
@@ -652,8 +677,18 @@ async function login() {
         // 更新用户统计数据
         updateUserStats();
         
+        // 检查 syncInfo 是否存在，不存在则初始化
+        if (!userData.syncInfo) {
+            userData.syncInfo = {
+                storageMode: 'local',
+                lastSyncDate: '',
+                syncCountToday: 0
+            };
+            localStorage.setItem(`pes_user_${username}`, JSON.stringify(userData));
+        }
+        
         // 尝试从云端加载用户数据（如果开启了云同步）
-        if (userData.syncInfo.storageMode === 'cloud' && cloudSyncManager) {
+        if (userData.syncInfo && userData.syncInfo.storageMode === 'cloud' && cloudSyncManager) {
             try {
                 const cloudResult = await cloudSyncManager.getUserData(username);
                 if (cloudResult.success && cloudResult.data) {
@@ -697,9 +732,22 @@ async function register() {
     }
     
     try {
-        // 修复：正确获取用户列表
-        const usersData = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
-        const users = usersData.users || []; // 确保获取到数组
+        // 安全获取用户列表
+    let usersData;
+    try {
+        usersData = JSON.parse(localStorage.getItem('pes_users'));
+        if (!usersData || !Array.isArray(usersData.users)) {
+            throw new Error('Invalid user data structure');
+        }
+    } catch (e) {
+        // 初始化正确的用户数据结构
+        usersData = {
+            users: [],
+            lastUpdated: new Date().toISOString()
+        };
+        localStorage.setItem('pes_users', JSON.stringify(usersData));
+    }
+    const users = usersData.users;
         
         // 修复：正确检查用户名是否存在
         if (users.includes(username)) {
@@ -1720,6 +1768,36 @@ async function testCloudConnection() {
         console.error('测试失败:', error);
         alert('测试失败: ' + error.message);
     }
+}
+
+// 验证并修复用户数据结构
+function validateAndFixUserData(username, userData) {
+    // 确保 records 存在
+    if (!userData.records) {
+        userData.records = {};
+    }
+    
+    // 确保 syncInfo 结构完整
+    if (!userData.syncInfo) {
+        userData.syncInfo = {
+            storageMode: 'local',
+            lastSyncDate: '',
+            syncCountToday: 0
+        };
+    } else {
+        // 确保 syncInfo 的所有属性都存在
+        if (!userData.syncInfo.storageMode) userData.syncInfo.storageMode = 'local';
+        if (!userData.syncInfo.lastSyncDate) userData.syncInfo.lastSyncDate = '';
+        if (typeof userData.syncInfo.syncCountToday !== 'number') userData.syncInfo.syncCountToday = 0;
+    }
+    
+    // 确保时间戳字段存在
+    if (!userData.createdAt) userData.createdAt = new Date().toISOString();
+    if (!userData.lastLogin) userData.lastLogin = new Date().toISOString();
+    
+    // 保存修复后的数据
+    localStorage.setItem(`pes_user_${username}`, JSON.stringify(userData));
+    return userData;
 }
 
 // 修改之前的syncToGitHub函数名为syncToCloud（已经修改）
