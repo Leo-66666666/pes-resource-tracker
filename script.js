@@ -480,7 +480,35 @@ function disagreeTerms() {
     window.location.href = 'about:blank';
 }
 
+// 初始化用户数据结构
+function initializeUserDataStructure() {
+    // 确保用户列表数据结构正确
+    const usersData = JSON.parse(localStorage.getItem('pes_users') || '{}');
+    if (!usersData.users || !Array.isArray(usersData.users)) {
+        usersData.users = [];
+        usersData.lastUpdated = new Date().toISOString();
+        localStorage.setItem('pes_users', JSON.stringify(usersData));
+    }
+    
+    // 修复所有现有用户的数据结构
+    usersData.users.forEach(username => {
+        const userDataStr = localStorage.getItem(`pes_user_${username}`);
+        if (userDataStr) {
+            try {
+                const userData = JSON.parse(userDataStr);
+                ensureUserDataStructure(userData);
+                localStorage.setItem(`pes_user_${username}`, JSON.stringify(userData));
+            } catch (e) {
+                console.error(`修复用户 ${username} 的数据时出错:`, e);
+            }
+        }
+    });
+}
+
 function continueInitialization() {
+    // 初始化用户数据结构
+    initializeUserDataStructure();
+    
     // 设置今天日期
     document.getElementById('current-date').value = currentDate;
     
@@ -591,6 +619,9 @@ async function login() {
         // 设置当前用户
         currentUser = username;
         userData = storedData;
+
+        // 确保用户数据结构完整
+        ensureUserDataStructure(userData);
         
         // 更新最后登录时间
         userData.lastLogin = new Date().toISOString();
@@ -640,7 +671,6 @@ async function login() {
     }
 }
 
-// 用户注册
 async function register() {
     const username = document.getElementById('reg-username').value.trim();
     const password = document.getElementById('reg-password').value.trim();
@@ -657,20 +687,21 @@ async function register() {
         alert('用户名只能包含字母、数字和下划线！');
         return;
     }
-    
     if (password !== confirm) {
         alert('两次输入的密码不一致！');
         return;
     }
-    
     if (!/^\d{6}$/.test(password)) {
         alert('密码必须是6位数字！');
         return;
     }
     
     try {
-        // 检查用户是否已存在
-        const users = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
+        // 修复：正确获取用户列表
+        const usersData = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
+        const users = usersData.users || []; // 确保获取到数组
+        
+        // 修复：正确检查用户名是否存在
         if (users.includes(username)) {
             throw new Error('用户名已存在！');
         }
@@ -693,11 +724,14 @@ async function register() {
             records: {}
         };
         
+        // 确保用户数据结构完整
+        ensureUserDataStructure(userRecord);
+        
         // 保存用户数据到localStorage
         localStorage.setItem(`pes_user_${username}`, JSON.stringify(userRecord));
         
         // 更新用户列表
-        const usersData = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
+        usersData.users = users;
         usersData.users.push(username);
         usersData.lastUpdated = new Date().toISOString();
         localStorage.setItem('pes_users', JSON.stringify(usersData));
@@ -709,7 +743,6 @@ async function register() {
         
         // 更新用户统计数据
         updateUserStats();
-        
     } catch (error) {
         alert('注册失败：' + error.message);
     }
@@ -735,6 +768,30 @@ function logout() {
     
     // 更新用户统计数据
     updateUserStats();
+}
+
+// 确保用户数据结构完整
+function ensureUserDataStructure(userData) {
+    // 确保 syncInfo 对象存在
+    if (!userData.syncInfo) {
+        userData.syncInfo = {
+            storageMode: 'local',  // 默认使用本地存储
+            lastSyncDate: '',
+            syncCountToday: 0
+        };
+    }
+    
+    // 确保 records 对象存在
+    if (!userData.records) {
+        userData.records = {};
+    }
+    
+    // 确保 createdAt 存在
+    if (!userData.createdAt) {
+        userData.createdAt = new Date().toISOString();
+    }
+    
+    return userData;
 }
 
 // 获取昨日数据
