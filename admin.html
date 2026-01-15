@@ -1073,10 +1073,13 @@
                     <div class="detail-item">
                         <div class="detail-label">记录数量</div>
                         <div class="detail-value">${recordCount} 条</div>
-                    </div>
                     <div class="detail-item">
                         <div class="detail-label">存储模式</div>
-                        <div class="detail-value">${user.syncInfo?.storageMode === 'cloud' ? '云端同步' : '仅本地'}</div>
+                        <div class="detail-value">仅本地</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">手动上传</div>
+                        <div class="detail-value">${user.syncInfo?.lastSyncDate ? '✅ 已上传' : '❌ 从未上传'}</div>
                     </div>
                     <div class="detail-item">
                         <div class="detail-label">云端同步</div>
