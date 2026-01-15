@@ -28,6 +28,13 @@ let userData = {
     records: {}
 };
 
+// 新增：用户名缓存
+let usernameCache = {
+    users: [],
+    lastUpdated: null,
+    isLoading: false
+};
+
 let cloudSyncManager = null;
 
 // 云函数同步管理器
@@ -121,68 +128,72 @@ class CloudSyncManager {
     }
     
    // 测试连接
-async testConnection() {
-    console.log('开始测试云函数连接...');
-    
-    try {
-        const testUrl = `${this.baseURL}/test`;
-        console.log('测试URL:', testUrl);
+    async testConnection() {
+        console.log('开始测试云函数连接...');
         
-        const response = await fetch(testUrl, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json'
+        try {
+            const testUrl = `${this.baseURL}/test`;
+            console.log('测试URL:', testUrl);
+            
+            const response = await fetch(testUrl, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            console.log('响应状态:', response.status, response.statusText);
+            
+            const result = await response.json();
+            console.log('完整响应:', result);
+            
+            // 检查响应结构
+            if (result.success) {
+                // 云函数返回的结构是 {success: true, status: 200, data: {...}, message: '...'}
+                return {
+                    success: true,
+                    message: result.message,
+                    data: result.data, // 这里包含了GitHub用户信息
+                    status: result.status
+                };
+            } else {
+                return {
+                    success: false,
+                    error: result.error,
+                    message: result.message
+                };
             }
-        });
-        
-        console.log('响应状态:', response.status, response.statusText);
-        
-        const result = await response.json();
-        console.log('完整响应:', result);
-        
-        // 检查响应结构
-        if (result.success) {
-            // 云函数返回的结构是 {success: true, status: 200, data: {...}, message: '...'}
-            return {
-                success: true,
-                message: result.message,
-                data: result.data, // 这里包含了GitHub用户信息
-                status: result.status
-            };
-        } else {
+            
+        } catch (error) {
+            console.error('连接测试失败:', error);
             return {
                 success: false,
-                error: result.error,
-                message: result.message
+                error: error.message,
+                message: '无法连接到云函数后端'
             };
         }
-        
-    } catch (error) {
-        console.error('连接测试失败:', error);
-        return {
-            success: false,
-            error: error.message,
-            message: '无法连接到云函数后端'
-        };
     }
-}
     
-    // 获取所有用户数据
+    // (在 CloudSyncManager 类中找到 getAllUsersData 方法，修改为：)
     async getAllUsersData() {
         console.log('开始获取所有用户数据...');
-        
         try {
             const url = this.buildUrl(this.apiPaths.GIST || '/gist');
             console.log('获取数据URL:', url);
-            
             const response = await this.sendRequest(url, {
                 method: 'GET'
             });
-            
             const result = await response.json();
             console.log('获取数据结果:', result.success ? '成功' : '失败');
             
             if (result.success) {
+                // 更新缓存
+                if (result.data && result.data.users) {
+                    usernameCache.users = Object.keys(result.data.users);
+                    usernameCache.lastUpdated = new Date().toISOString();
+                    localStorage.setItem('pes_username_cache', JSON.stringify(usernameCache));
+                }
+                
                 return {
                     success: true,
                     data: result.data || { users: {}, metadata: { totalUsers: 0, version: '1.0' } },
@@ -193,9 +204,27 @@ async testConnection() {
             } else {
                 throw new Error(result.error || result.message || '获取数据失败');
             }
-            
         } catch (error) {
             console.error('获取数据失败:', error);
+            
+            // 返回缓存数据（如果有的话）
+            if (usernameCache.users.length > 0) {
+                console.log('使用缓存的用户名数据');
+                return {
+                    success: true,
+                    data: {
+                        users: usernameCache.users.reduce((acc, username) => {
+                            acc[username] = { username };
+                            return acc;
+                        }, {}),
+                        metadata: { totalUsers: usernameCache.users.length }
+                    },
+                    lastUpdated: usernameCache.lastUpdated,
+                    totalUsers: usernameCache.users.length,
+                    isNew: false
+                };
+            }
+            
             return {
                 success: false,
                 error: error.message,
@@ -343,6 +372,102 @@ function initCloudSync() {
         console.error('初始化云函数同步管理器失败:', error);
         updateCloudStatus('初始化失败', 'error');
     }
+}
+
+// ========== 新增函数：获取云端用户名列表 ==========
+async function fetchCloudUsernames() {
+    if (!cloudSyncManager) {
+        console.log('云函数未配置，无法获取云端用户名');
+        return [];
+    }
+    
+    try {
+        usernameCache.isLoading = true;
+        const result = await cloudSyncManager.getAllUsersData();
+        usernameCache.isLoading = false;
+        
+        if (result.success && result.data && result.data.users) {
+            const cloudUsers = Object.keys(result.data.users);
+            usernameCache.users = cloudUsers;
+            usernameCache.lastUpdated = new Date().toISOString();
+            
+            // 保存到localStorage
+            localStorage.setItem('pes_username_cache', JSON.stringify(usernameCache));
+            console.log(`缓存了 ${cloudUsers.length} 个云端用户名`);
+            return cloudUsers;
+        }
+    } catch (error) {
+        console.error('获取云端用户名失败:', error);
+        usernameCache.isLoading = false;
+    }
+    return usernameCache.users; // 返回缓存结果
+}
+
+// ========== 新增函数：定期刷新用户名缓存 ==========
+function setupUsernameCacheRefresh() {
+    // 从localStorage加载缓存
+    const cachedData = localStorage.getItem('pes_username_cache');
+    if (cachedData) {
+        try {
+            usernameCache = JSON.parse(cachedData);
+            console.log('加载了用户名缓存，最后更新:', usernameCache.lastUpdated);
+        } catch (e) {
+            console.error('加载用户名缓存失败:', e);
+        }
+    }
+    
+    // 立即刷新一次
+    refreshUsernameCache();
+    
+    // 设置每2小时（7200000ms）刷新一次
+    setInterval(refreshUsernameCache, 7200000);
+    
+    // 页面可见时再刷新一次
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+            refreshUsernameCache();
+        }
+    });
+}
+
+// ========== 新增函数：刷新用户名缓存 ==========
+async function refreshUsernameCache() {
+    if (usernameCache.isLoading) return;
+    
+    console.log('刷新用户名缓存...');
+    await fetchCloudUsernames();
+}
+
+// ========== 新增函数：检查用户名是否可用 ==========
+async function isUsernameAvailable(username) {
+    // 检查本地已注册用户
+    const usersData = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
+    if (usersData.users.includes(username)) {
+        console.log('用户名在本地已存在');
+        return { available: false, source: 'local' };
+    }
+    
+    // 检查云端用户名（使用缓存）
+    if (!usernameCache.isLoading && usernameCache.users.includes(username)) {
+        console.log('用户名在云端缓存中已存在');
+        return { available: false, source: 'cloud' };
+    }
+    
+    // 如果缓存过期（超过24小时），强制刷新
+    const lastUpdated = usernameCache.lastUpdated ? new Date(usernameCache.lastUpdated) : null;
+    const now = new Date();
+    if (!lastUpdated || (now - lastUpdated) > 86400000) {
+        console.log('缓存过期，强制刷新');
+        await fetchCloudUsernames();
+    }
+    
+    // 重新检查（使用最新缓存）
+    if (usernameCache.users.includes(username)) {
+        console.log('用户名在云端已存在');
+        return { available: false, source: 'cloud' };
+    }
+    
+    return { available: true, source: 'none' };
 }
 
 // 更新云端状态显示
@@ -506,43 +631,18 @@ function initializeUserDataStructure() {
 }
 
 function continueInitialization() {
-    // 修复所有用户的数据结构
-    try {
-        const usersData = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
-        if (usersData.users && Array.isArray(usersData.users)) {
-            usersData.users.forEach(username => {
-                try {
-                    const userDataStr = localStorage.getItem(`pes_user_${username}`);
-                    if (userDataStr) {
-                        const userData = JSON.parse(userDataStr);
-                        validateAndFixUserData(username, userData);
-                    }
-                } catch (e) {
-                    console.error(`修复用户 ${username} 数据时出错:`, e);
-                }
-            });
-        }
-    } catch (e) {
-        console.error('修复用户数据结构时出错:', e);
-        // 重置用户列表
-        localStorage.setItem('pes_users', JSON.stringify({users: [], lastUpdated: new Date().toISOString()}));
-    }
-    
-    // 初始化用户数据结构
-    initializeUserDataStructure();
+    // 设置缓存刷新
+    setupUsernameCacheRefresh();
     
     // 设置今天日期
     document.getElementById('current-date').value = currentDate;
-    
     // 显示登录界面
     showLogin();
-    
     // 如果之前有登录信息，尝试自动登录
     const savedUser = localStorage.getItem('pes_current_user');
     if (savedUser) {
         document.getElementById('username').value = savedUser;
     }
-    
     // 初始化日历
     generateCalendar();
 }
@@ -710,8 +810,7 @@ async function register() {
     const username = document.getElementById('reg-username').value.trim();
     const password = document.getElementById('reg-password').value.trim();
     const confirm = document.getElementById('reg-confirm').value.trim();
-    // 所有用户默认使用本地存储
-    const storageMode = 'local';
+    const storageMode = document.querySelector('input[name="storage"]:checked').value;
     
     if (!username || !password || !confirm) {
         alert('请填写所有字段！');
@@ -719,8 +818,8 @@ async function register() {
     }
     
     // 用户名验证
-    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-        alert('用户名只能包含字母、数字和下划线！');
+    if (!/^[a-zA-Z0-9_]{3,15}$/.test(username)) {
+        alert('用户名需3-15个字符，只能包含字母、数字和下划线！');
         return;
     }
     if (password !== confirm) {
@@ -732,30 +831,29 @@ async function register() {
         return;
     }
     
+    // 显示加载状态
+    const registerBtn = document.querySelector('#register-section button');
+    const originalBtnText = registerBtn.innerHTML;
+    registerBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 检查用户名...';
+    registerBtn.disabled = true;
+    
     try {
-        // 安全获取用户列表
-    let usersData;
-    try {
-        usersData = JSON.parse(localStorage.getItem('pes_users'));
-        if (!usersData || !Array.isArray(usersData.users)) {
-            throw new Error('Invalid user data structure');
-        }
-    } catch (e) {
-        // 初始化正确的用户数据结构
-        usersData = {
-            users: [],
-            lastUpdated: new Date().toISOString()
-        };
-        localStorage.setItem('pes_users', JSON.stringify(usersData));
-    }
-    const users = usersData.users;
+        // 检查用户名是否可用
+        const checkResult = await isUsernameAvailable(username);
         
-        // 修复：正确检查用户名是否存在
-        if (users.includes(username)) {
-            throw new Error('用户名已存在！');
+        if (!checkResult.available) {
+            if (checkResult.source === 'cloud') {
+                // 仅当用户名在云端已被占用时，允许更改用户名
+                showUsernameConflictDialog(username);
+                return;
+            } else {
+                throw new Error('本设备上已存在该用户名');
+            }
         }
         
-        if (users.length >= CONFIG.MAX_USERS) {
+        // 检查用户数量限制
+        const usersData = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
+        if (usersData.users.length >= CONFIG.MAX_USERS) {
             throw new Error(`用户数量已达上限 ${CONFIG.MAX_USERS} 人！`);
         }
         
@@ -773,17 +871,20 @@ async function register() {
             records: {}
         };
         
-        // 确保用户数据结构完整
-        ensureUserDataStructure(userRecord);
-        
         // 保存用户数据到localStorage
         localStorage.setItem(`pes_user_${username}`, JSON.stringify(userRecord));
         
         // 更新用户列表
-        usersData.users = users;
         usersData.users.push(username);
         usersData.lastUpdated = new Date().toISOString();
         localStorage.setItem('pes_users', JSON.stringify(usersData));
+        
+        // 更新用户名缓存
+        if (!usernameCache.users.includes(username)) {
+            usernameCache.users.push(username);
+            usernameCache.lastUpdated = new Date().toISOString();
+            localStorage.setItem('pes_username_cache', JSON.stringify(usernameCache));
+        }
         
         alert('注册成功！请登录。');
         showLogin();
@@ -794,6 +895,208 @@ async function register() {
         updateUserStats();
     } catch (error) {
         alert('注册失败：' + error.message);
+    } finally {
+        // 恢复按钮状态
+        registerBtn.innerHTML = originalBtnText;
+        registerBtn.disabled = false;
+    }
+}
+
+// ========== 新增函数：显示用户名冲突对话框 ==========
+function showUsernameConflictDialog(originalUsername) {
+    // 创建模态框
+    const modal = document.createElement('div');
+    modal.id = 'username-conflict-modal';
+    modal.className = 'modal-overlay active';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-exclamation-triangle"></i> 用户名已被占用</h2>
+                <button class="close-btn" onclick="closeConflictModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="conflict-content">
+                    <p>抱歉，用户名 "<strong>${originalUsername}</strong>" 已在云端被其他用户使用。</p>
+                    <p>为避免数据冲突，您可以：</p>
+                    <ol>
+                        <li>修改为一个新用户名（推荐）</li>
+                        <li>使用以下建议的用户名</li>
+                    </ol>
+                    
+                    <div class="form-group conflict-group">
+                        <label for="new-username">新用户名</label>
+                        <input type="text" id="new-username" placeholder="输入新用户名" value="${originalUsername}_new">
+                        <div class="input-hint">3-15个字符，仅限字母、数字和下划线</div>
+                        <div id="username-check-status" class="input-status"></div>
+                    </div>
+                    
+                    <div class="suggestions-container">
+                        <p><strong>建议用户名：</strong></p>
+                        <div id="suggestions-list" class="suggestions-grid">
+                            <!-- 建议会在这里动态生成 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeConflictModal()" class="btn-secondary">取消</button>
+                <button onclick="confirmNewUsername('${originalUsername}')" id="confirm-username-btn" class="btn-primary">
+                    确认新用户名
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // 添加事件监听
+    document.getElementById('new-username').addEventListener('input', function() {
+        validateNewUsername(this.value);
+    });
+    
+    // 生成建议用户名
+    generateUsernameSuggestions(originalUsername);
+}
+
+// ========== 新增函数：生成用户名建议 ==========
+function generateUsernameSuggestions(baseUsername) {
+    const suggestions = [];
+    const today = new Date();
+    const year = today.getFullYear().toString().slice(2);
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const randomNum = Math.floor(100 + Math.random() * 900);
+    
+    // 建议组合
+    const patterns = [
+        `${baseUsername}_${year}${month}${day}`,
+        `${baseUsername}_player`,
+        `${baseUsername}${randomNum}`,
+        `${baseUsername}_user`,
+        `${baseUsername}_${Math.floor(Math.random() * 1000)}`
+    ];
+    
+    // 限制建议数量
+    const suggestionsList = document.getElementById('suggestions-list');
+    suggestionsList.innerHTML = '';
+    
+    patterns.forEach(pattern => {
+        const cleanName = pattern.replace(/[^a-zA-Z0-9_]/g, '');
+        if (cleanName.length >= 3 && cleanName.length <= 15) {
+            suggestions.push(cleanName);
+            
+            const suggestionItem = document.createElement('div');
+            suggestionItem.className = 'suggestion-item';
+            suggestionItem.textContent = cleanName;
+            suggestionItem.onclick = function() {
+                document.getElementById('new-username').value = cleanName;
+                validateNewUsername(cleanName);
+            };
+            suggestionsList.appendChild(suggestionItem);
+        }
+    });
+}
+
+// ========== 新增函数：验证新用户名 ==========
+async function validateNewUsername(newUsername) {
+    const statusEl = document.getElementById('username-check-status');
+    statusEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 检查中...';
+    statusEl.className = 'input-status checking';
+    
+    if (!/^[a-zA-Z0-9_]{3,15}$/.test(newUsername)) {
+        statusEl.innerHTML = '用户名格式不正确';
+        statusEl.className = 'input-status invalid';
+        document.getElementById('confirm-username-btn').disabled = true;
+        return;
+    }
+    
+    const checkResult = await isUsernameAvailable(newUsername);
+    if (!checkResult.available) {
+        statusEl.innerHTML = '该用户名已被占用';
+        statusEl.className = 'input-status invalid';
+        document.getElementById('confirm-username-btn').disabled = true;
+    } else {
+        statusEl.innerHTML = '✓ 用户名可用';
+        statusEl.className = 'input-status valid';
+        document.getElementById('confirm-username-btn').disabled = false;
+    }
+}
+
+// ========== 新增函数：确认新用户名 ==========
+async function confirmNewUsername(originalUsername) {
+    const newUsername = document.getElementById('new-username').value.trim();
+    const statusEl = document.getElementById('username-check-status');
+    
+    if (!/^[a-zA-Z0-9_]{3,15}$/.test(newUsername)) {
+        alert('新用户名格式不正确！');
+        return;
+    }
+    
+    // 再次验证
+    const checkResult = await isUsernameAvailable(newUsername);
+    if (!checkResult.available) {
+        alert('新用户名已被占用，请选择其他名称！');
+        return;
+    }
+    
+    // 获取原表单值
+    const password = document.getElementById('reg-password').value.trim();
+    const confirm = document.getElementById('reg-confirm').value.trim();
+    const storageMode = document.querySelector('input[name="storage"]:checked').value;
+    
+    // 创建新用户
+    try {
+        const usersData = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
+        
+        if (usersData.users.length >= CONFIG.MAX_USERS) {
+            throw new Error(`用户数量已达上限 ${CONFIG.MAX_USERS} 人！`);
+        }
+        
+        const userRecord = {
+            username: newUsername,
+            password: password,
+            createdAt: new Date().toISOString(),
+            lastLogin: new Date().toISOString(),
+            syncInfo: {
+                storageMode: storageMode,
+                lastSyncDate: '',
+                syncCountToday: 0
+            },
+            records: {}
+        };
+        
+        localStorage.setItem(`pes_user_${newUsername}`, JSON.stringify(userRecord));
+        
+        usersData.users.push(newUsername);
+        localStorage.setItem('pes_users', JSON.stringify(usersData));
+        
+        // 更新用户名缓存
+        if (!usernameCache.users.includes(newUsername)) {
+            usernameCache.users.push(newUsername);
+            usernameCache.lastUpdated = new Date().toISOString();
+            localStorage.setItem('pes_username_cache', JSON.stringify(usernameCache));
+        }
+        
+        closeConflictModal();
+        alert(`用户名已更改为 "${newUsername}"，注册成功！`);
+        showLogin();
+        document.getElementById('username').value = newUsername;
+        document.getElementById('password').value = password;
+        
+        // 更新用户统计数据
+        updateUserStats();
+    } catch (error) {
+        alert('注册失败：' + error.message);
+    }
+}
+
+// ========== 新增函数：关闭冲突模态框 ==========
+function closeConflictModal() {
+    const modal = document.getElementById('username-conflict-modal');
+    if (modal) {
+        modal.remove();
     }
 }
 
