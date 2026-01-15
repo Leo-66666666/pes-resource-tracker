@@ -1386,4 +1386,94 @@ button.secondary {
         color: #007bff;
         font-size: 18px;
     }
+
+    /* ========== 在 style.css 中添加以下样式 ========== */
+    
+    /* 输入状态指示器 */
+    .input-status {
+        font-size: 14px;
+        min-height: 20px;
+        margin-top: 5px;
+        padding-left: 5px;
+    }
+    
+    .input-status.valid {
+        color: #28a745;
+    }
+    
+    .input-status.invalid {
+        color: #dc3545;
+    }
+    
+    .input-status.checking {
+        color: #17a2b8;
+    }
+    
+    /* 按钮加载状态 */
+    .btn-loading {
+        opacity: 0.7;
+        pointer-events: none;
+    }
+    
+    /* 状态徽章 */
+    .status-badge {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+        margin-left: 5px;
+    }
+    
+    .status-success {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+    
+    .status-warning {
+        background: #fff3cd;
+        color: #856404;
+        border: 1px solid #ffeeba;
+    }
+    
+    .status-error {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+    
+    /* 建议网格 */
+    .suggestions-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 10px;
+        margin-top: 10px;
+    }
+    
+    .suggestion-item {
+        padding: 8px 12px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .suggestion-item:hover {
+        background: #f0f8ff;
+        border-color: #007bff;
+    }
+    
+    /* 模态框响应式调整 */
+    @media (max-width: 600px) {
+        .modal-content {
+            width: 95%;
+            margin: 10px;
+        }
+        
+        .suggestions-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
 }
