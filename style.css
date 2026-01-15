@@ -1360,14 +1360,30 @@ button.secondary {
     }
 
     .storage-info {
-        margin: 15px 0;
+        margin: 20px 0;
+        padding: 15px;
+        background-color: #f0f8ff;
+        border-radius: 8px;
+        border-left: 4px solid #007bff;
     }
+    
     .info-box {
-        background-color: #e7f3ff;
-        border-left: 4px solid #2196F3;
-        padding: 12px;
-        border-radius: 0 4px 4px 0;
-        color: #0d4a7c;
         font-size: 14px;
+        line-height: 1.5;
+    }
+    
+    .info-box p {
+        margin: 8px 0;
+    }
+    
+    .warning-text {
+        color: #dc3545;
+        font-weight: bold;
+    }
+    
+    .storage-info h3 {
+        margin-top: 0;
+        color: #007bff;
+        font-size: 18px;
     }
 }
