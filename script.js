@@ -520,6 +520,7 @@ function updateCloudStatus(status, type = 'info') {
 }
 
 // 初始化
+// ========== 修改 DOMContentLoaded 事件监听器 ==========
 document.addEventListener('DOMContentLoaded', function() {
     // 检查隐私协议
     const privacyAgreed = localStorage.getItem(CONFIG.PRIVACY_AGREED);
@@ -552,7 +553,6 @@ document.addEventListener('DOMContentLoaded', function() {
             event.preventDefault();
             showHelp();
         }
-        
         // Ctrl+S 保存数据
         if (event.ctrlKey && event.key === 's') {
             event.preventDefault();
@@ -560,7 +560,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 saveData();
             }
         }
-        
         // Ctrl+Y 导入昨日数据
         if (event.ctrlKey && event.key === 'y') {
             event.preventDefault();
@@ -568,13 +567,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 copyYesterday();
             }
         }
-        
         // Ctrl+T 跳转到今天
         if (event.ctrlKey && event.key === 't') {
             event.preventDefault();
             setToday();
         }
-        
         // 左右箭头切换日期
         if (event.key === 'ArrowLeft') {
             event.preventDefault();
@@ -585,6 +582,151 @@ document.addEventListener('DOMContentLoaded', function() {
             changeDate(1);
         }
     });
+    // ========== 添加样式 ==========
+    const style = document.createElement('style');
+    style.textContent = `
+    /* 用户名冲突对话框样式 */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .modal-content {
+        background: white;
+        border-radius: 8px;
+        width: 90%;
+        max-width: 500px;
+        max-height: 80vh;
+        overflow-y: auto;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+    
+    .modal-header {
+        padding: 15px 20px;
+        border-bottom: 1px solid #eee;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .modal-header h2 {
+        margin: 0;
+        color: #333;
+        font-size: 1.4rem;
+    }
+    
+    .close-btn {
+        background: none;
+        border: none;
+        font-size: 1.2rem;
+        cursor: pointer;
+        color: #666;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        transition: background 0.3s;
+    }
+    
+    .close-btn:hover {
+        background: #f0f0f0;
+        color: #333;
+    }
+    
+    .modal-body {
+        padding: 20px;
+    }
+    
+    .modal-footer {
+        padding: 15px 20px;
+        border-top: 1px solid #eee;
+        text-align: right;
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+    }
+    
+    .conflict-content {
+        color: #333;
+    }
+    
+    .conflict-content p {
+        margin: 10px 0;
+        line-height: 1.5;
+    }
+    
+    .conflict-group {
+        margin: 20px 0;
+    }
+    
+    #username-check-status {
+        margin-top: 5px;
+        font-size: 14px;
+        min-height: 20px;
+    }
+    
+    .input-status.valid {
+        color: #28a745;
+    }
+    
+    .input-status.invalid {
+        color: #dc3545;
+    }
+    
+    .input-status.checking {
+        color: #17a2b8;
+    }
+    
+    .suggestions-container {
+        margin-top: 20px;
+        padding-top: 15px;
+        border-top: 1px solid #eee;
+    }
+    
+    .suggestions-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 10px;
+        margin-top: 10px;
+    }
+    
+    .suggestion-item {
+        padding: 8px 12px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .suggestion-item:hover {
+        background: #f0f8ff;
+        border-color: #007bff;
+    }
+    
+    /* 响应式调整 */
+    @media (max-width: 600px) {
+        .modal-content {
+            width: 95%;
+            margin: 10px;
+        }
+        
+        .suggestions-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+    `;
+    document.head.appendChild(style);
 });
 
 // 隐私协议处理
