@@ -1704,6 +1704,93 @@
             // e.preventDefault();
             // e.returnValue = '';
         });
+
+        // ========== 在 admin.html 中添加以下 JavaScript 代码 ==========
+        // 添加到文件末尾，</script> 标签之前
+        
+        // 刷新用户名缓存
+        async function refreshUsernameCache() {
+            try {
+                setLoading(true);
+                
+                // 调用云函数刷新缓存
+                if (cloudSyncManager) {
+                    const result = await cloudSyncManager.getAllUsersData();
+                    if (result.success) {
+                        // 更新缓存状态显示
+                        document.getElementById('cache-status').textContent = '缓存: 已刷新';
+                        logAction('管理员手动刷新了用户名缓存', 'success');
+                        alert('用户名缓存已成功刷新！');
+                        // 重新加载用户列表
+                        await loadAllData();
+                    } else {
+                        throw new Error(result.message || '刷新缓存失败');
+                    }
+                }
+            } catch (error) {
+                logAction('刷新用户名缓存失败: ' + error.message, 'error');
+                alert('刷新用户名缓存失败: ' + error.message);
+                document.getElementById('cache-status').textContent = '缓存: 刷新失败';
+            } finally {
+                setLoading(false);
+            }
+        }
+        
+        // 更新缓存状态显示
+        function updateCacheStatus() {
+            try {
+                const cachedData = localStorage.getItem('pes_username_cache');
+                if (cachedData) {
+                    const cache = JSON.parse(cachedData);
+                    const lastUpdated = new Date(cache.lastUpdated);
+                    const now = new Date();
+                    const diffHours = (now - lastUpdated) / 3600000;
+                    
+                    let statusText = '缓存: 新鲜';
+                    let statusClass = 'status-success';
+                    
+                    if (diffHours > 24) {
+                        statusText = '缓存: 已过期';
+                        statusClass = 'status-error';
+                    } else if (diffHours > 2) {
+                        statusText = `缓存: ${Math.floor(diffHours)}小时前`;
+                        statusClass = 'status-warning';
+                    }
+                    
+                    const statusEl = document.getElementById('cache-status');
+                    if (statusEl) {
+                        statusEl.textContent = statusText;
+                        // 移除旧的状态类
+                        statusEl.parentElement.className = 'status-badge';
+                        statusEl.parentElement.classList.add(statusClass);
+                    }
+                }
+            } catch (e) {
+                console.error('更新缓存状态失败:', e);
+            }
+        }
+        
+        // 在页面加载完成后更新缓存状态
+        document.addEventListener('DOMContentLoaded', function() {
+            // ... 其他初始化代码 ...
+            
+            // 设置定期更新缓存状态
+            updateCacheStatus();
+            setInterval(updateCacheStatus, 60000); // 每分钟更新一次
+            
+            // 为刷新按钮添加加载状态
+            document.querySelector('.btn-sync-all').addEventListener('click', function() {
+                const btn = this;
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 刷新中...';
+                btn.disabled = true;
+                
+                setTimeout(() => {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }, 3000);
+            });
+        });
     </script>
 </body>
 </html>
