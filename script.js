@@ -28,6 +28,14 @@ let userData = {
     records: {}
 };
 
+// 新增：全局用户名缓存
+let usernameCache = {
+    users: [],
+    lastUpdated: null,
+    isLoading: false,
+    lastRefreshed: null
+};
+
 // 新增：用户名缓存
 let usernameCache = {
     users: [],
@@ -36,6 +44,7 @@ let usernameCache = {
 };
 
 let cloudSyncManager = null;
+
 
 // 云函数同步管理器
 class CloudSyncManager {
@@ -174,7 +183,8 @@ class CloudSyncManager {
         }
     }
     
-    // (在 CloudSyncManager 类中找到 getAllUsersData 方法，修改为：)
+    // 位置：在 CloudSyncManager 类定义中，替换 getAllUsersData 方法
+    // 在 class CloudSyncManager { ... } 内部找到 getAllUsersData 方法，替换为：
     async getAllUsersData() {
         console.log('开始获取所有用户数据...');
         try {
@@ -187,7 +197,7 @@ class CloudSyncManager {
             console.log('获取数据结果:', result.success ? '成功' : '失败');
             
             if (result.success) {
-                // 更新缓存
+                // 更新用户名缓存
                 if (result.data && result.data.users) {
                     usernameCache.users = Object.keys(result.data.users);
                     usernameCache.lastUpdated = new Date().toISOString();
@@ -196,7 +206,7 @@ class CloudSyncManager {
                 
                 return {
                     success: true,
-                    data: result.data || { users: {}, metadata: { totalUsers: 0, version: '1.0' } },
+                     result.data || { users: {}, meta { totalUsers: 0, version: '1.0' } },
                     lastUpdated: result.lastUpdated,
                     totalUsers: result.totalUsers || 0,
                     isNew: false
@@ -212,12 +222,16 @@ class CloudSyncManager {
                 console.log('使用缓存的用户名数据');
                 return {
                     success: true,
-                    data: {
+                     {
                         users: usernameCache.users.reduce((acc, username) => {
                             acc[username] = { username };
                             return acc;
                         }, {}),
-                        metadata: { totalUsers: usernameCache.users.length }
+                        meta { 
+                            totalUsers: usernameCache.users.length,
+                            lastUpdated: usernameCache.lastUpdated,
+                            version: '1.0' 
+                        }
                     },
                     lastUpdated: usernameCache.lastUpdated,
                     totalUsers: usernameCache.users.length,
@@ -376,6 +390,7 @@ function initCloudSync() {
 
 // ========== 新增函数：获取云端用户名列表 ==========
 async function fetchCloudUsernames() {
+    console.log('正在获取云端用户名列表...');
     if (!cloudSyncManager) {
         console.log('云函数未配置，无法获取云端用户名');
         return [];
@@ -386,10 +401,11 @@ async function fetchCloudUsernames() {
         const result = await cloudSyncManager.getAllUsersData();
         usernameCache.isLoading = false;
         
-        if (result.success && result.data && result.data.users) {
-            const cloudUsers = Object.keys(result.data.users);
+        if (result.success && result.data) {
+            const cloudUsers = Object.keys(result.data.users || {});
             usernameCache.users = cloudUsers;
             usernameCache.lastUpdated = new Date().toISOString();
+            usernameCache.lastRefreshed = new Date().toISOString();
             
             // 保存到localStorage
             localStorage.setItem('pes_username_cache', JSON.stringify(usernameCache));
@@ -400,11 +416,15 @@ async function fetchCloudUsernames() {
         console.error('获取云端用户名失败:', error);
         usernameCache.isLoading = false;
     }
-    return usernameCache.users; // 返回缓存结果
+    
+    // 返回现有缓存
+    return usernameCache.users; 
 }
 
 // ========== 新增函数：定期刷新用户名缓存 ==========
 function setupUsernameCacheRefresh() {
+    console.log('设置用户名缓存刷新机制...');
+    
     // 从localStorage加载缓存
     const cachedData = localStorage.getItem('pes_username_cache');
     if (cachedData) {
@@ -420,11 +440,12 @@ function setupUsernameCacheRefresh() {
     refreshUsernameCache();
     
     // 设置每2小时（7200000ms）刷新一次
-    setInterval(refreshUsernameCache, 7200000);
+    setInterval(refreshUsernameCache, 2 * 60 * 60 * 1000);
     
     // 页面可见时再刷新一次
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) {
+            console.log('页面重新激活，刷新用户名缓存');
             refreshUsernameCache();
         }
     });
@@ -432,42 +453,71 @@ function setupUsernameCacheRefresh() {
 
 // ========== 新增函数：刷新用户名缓存 ==========
 async function refreshUsernameCache() {
-    if (usernameCache.isLoading) return;
+    if (usernameCache.isLoading) {
+        console.log('用户名缓存正在刷新中，跳过本次刷新');
+        return;
+    }
     
-    console.log('刷新用户名缓存...');
-    await fetchCloudUsernames();
+    // 检查是否需要强制刷新（缓存超过24小时）
+    const now = new Date();
+    const lastRefreshed = usernameCache.lastRefreshed ? new Date(usernameCache.lastRefreshed) : null;
+    const shouldForceRefresh = !lastRefreshed || (now - lastRefreshed) > 24 * 60 * 60 * 1000;
+    
+    if (shouldForceRefresh) {
+        console.log('缓存超过24小时，强制刷新用户名缓存');
+        await fetchCloudUsernames();
+    } else {
+        console.log('用户名缓存未过期，跳过刷新');
+    }
 }
 
 // ========== 新增函数：检查用户名是否可用 ==========
 async function isUsernameAvailable(username) {
-    // 检查本地已注册用户
+    console.log(`检查用户名可用性: ${username}`);
+    
+    // 1. 检查本地是否已存在
     const usersData = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
-    if (usersData.users.includes(username)) {
-        console.log('用户名在本地已存在');
+    const localExists = usersData.users.includes(username);
+    
+    if (localExists) {
+        console.log(`用户名 "${username}" 在本地已存在`);
         return { available: false, source: 'local' };
     }
     
-    // 检查云端用户名（使用缓存）
+    // 2. 检查云端缓存
     if (!usernameCache.isLoading && usernameCache.users.includes(username)) {
-        console.log('用户名在云端缓存中已存在');
+        console.log(`用户名 "${username}" 在云端缓存中已存在`);
         return { available: false, source: 'cloud' };
     }
     
-    // 如果缓存过期（超过24小时），强制刷新
+    // 3. 如果缓存过期或不存在，强制刷新
     const lastUpdated = usernameCache.lastUpdated ? new Date(usernameCache.lastUpdated) : null;
     const now = new Date();
-    if (!lastUpdated || (now - lastUpdated) > 86400000) {
-        console.log('缓存过期，强制刷新');
+    const isCacheStale = !lastUpdated || (now - lastUpdated) > 4 * 60 * 60 * 1000; // 4小时
+    
+    if (isCacheStale) {
+        console.log('用户名缓存过期，强制刷新');
         await fetchCloudUsernames();
     }
     
-    // 重新检查（使用最新缓存）
+    // 4. 重新检查
     if (usernameCache.users.includes(username)) {
-        console.log('用户名在云端已存在');
+        console.log(`用户名 "${username}" 在云端已存在`);
         return { available: false, source: 'cloud' };
     }
     
+    console.log(`用户名 "${username}" 可用`);
     return { available: true, source: 'none' };
+}
+
+// ========== 新增函数：生成唯一用户ID ==========
+function generateUniqueUserId() {
+    // 生成UUID v4
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
 }
 
 // 更新云端状态显示
@@ -772,9 +822,9 @@ function initializeUserDataStructure() {
     });
 }
 
+// 位置：替换现有的 continueInitialization 函数
 function continueInitialization() {
-    // 设置缓存刷新
-    setupUsernameCacheRefresh();
+    // 不需要在这里调用 setupUsernameCacheRefresh，因为已在云函数连接成功后调用
     
     // 设置今天日期
     document.getElementById('current-date').value = currentDate;
@@ -788,6 +838,7 @@ function continueInitialization() {
     // 初始化日历
     generateCalendar();
 }
+
 
 // 更新用户统计数据
 async function updateUserStats() {
@@ -948,6 +999,7 @@ async function login() {
     }
 }
 
+// 位置：替换现有的 register() 函数
 async function register() {
     const username = document.getElementById('reg-username').value.trim();
     const password = document.getElementById('reg-password').value.trim();
@@ -976,7 +1028,7 @@ async function register() {
     // 显示加载状态
     const registerBtn = document.querySelector('#register-section button');
     const originalBtnText = registerBtn.innerHTML;
-    registerBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 检查用户名...';
+    registerBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 验证用户名...';
     registerBtn.disabled = true;
     
     try {
@@ -984,13 +1036,15 @@ async function register() {
         const checkResult = await isUsernameAvailable(username);
         
         if (!checkResult.available) {
+            let errorMessage = '该用户名已被注册！';
             if (checkResult.source === 'cloud') {
-                // 仅当用户名在云端已被占用时，允许更改用户名
-                showUsernameConflictDialog(username);
-                return;
+                errorMessage += '\n\n此用户名已在云端被其他用户使用，为避免数据冲突，'; 
+                errorMessage += '请选择其他用户名。';
+                errorMessage += '\n\n推荐尝试：' + username + '_' + Math.floor(100 + Math.random() * 900);
             } else {
-                throw new Error('本设备上已存在该用户名');
+                errorMessage += '\n\n本设备上已存在同名用户，请使用不同用户名。';
             }
+            throw new Error(errorMessage);
         }
         
         // 检查用户数量限制
@@ -999,8 +1053,12 @@ async function register() {
             throw new Error(`用户数量已达上限 ${CONFIG.MAX_USERS} 人！`);
         }
         
+        // 生成唯一用户ID
+        const userId = generateUniqueUserId();
+        
         // 创建新用户数据
         const userRecord = {
+            userId: userId, // 添加唯一ID
             username: username,
             password: password,
             createdAt: new Date().toISOString(),
@@ -1008,7 +1066,8 @@ async function register() {
             syncInfo: {
                 storageMode: storageMode,
                 lastSyncDate: '',
-                syncCountToday: 0
+                syncCountToday: 0,
+                uniqueId: userId  // 同步时使用
             },
             records: {}
         };
@@ -1021,7 +1080,7 @@ async function register() {
         usersData.lastUpdated = new Date().toISOString();
         localStorage.setItem('pes_users', JSON.stringify(usersData));
         
-        // 更新用户名缓存
+        // 更新本地用户名缓存
         if (!usernameCache.users.includes(username)) {
             usernameCache.users.push(username);
             usernameCache.lastUpdated = new Date().toISOString();
@@ -1766,7 +1825,7 @@ function updateStatCard(totalId, changeId, todayValue, monthChange, iconClass, r
     }
 }
 
-// 替换整个 syncToCloud 函数 (大约在900行)
+// 位置：替换现有的 syncToCloud 函数
 async function syncToCloud() {
     if (!currentUser) {
         alert('请先登录！');
@@ -1778,7 +1837,16 @@ async function syncToCloud() {
         return;
     }
     
-    // 检查同步限制（但不依赖存储模式）
+    // 检查存储模式
+    if (userData.syncInfo.storageMode !== 'cloud') {
+        if (!confirm('您当前是本地存储模式，切换到云端同步模式吗？\n切换后数据将上传到云端。')) {
+            return;
+        }
+        userData.syncInfo.storageMode = 'cloud';
+        localStorage.setItem(`pes_user_${currentUser}`, JSON.stringify(userData));
+    }
+    
+    // 检查同步限制
     const syncInfo = userData.syncInfo || {};
     const today = new Date().toDateString();
     
@@ -1787,21 +1855,10 @@ async function syncToCloud() {
         return;
     }
     
-    // 显示确认对话框，强调这是手动上传
-    const confirmMsg = `🔒 数据同步提示
-
-您即将手动将数据上传到云端，以便在多设备间同步。
-
+    // 确认同步
+    if (!confirm(`⚠️ 数据将同步到云端
 ${CONFIG.PRIVACY_WARNING}
-
-上传后：
-• 您的数据将被存储在管理员的GitHub Gist中
-• 管理员可以查看这些数据
-• 本操作不影响您的默认存储方式（数据仍保存在本地）
-
-确定要上传数据到云端吗？`;
-
-    if (!confirm(confirmMsg)) {
+确定要同步吗？`)) {
         return;
     }
     
@@ -1809,7 +1866,7 @@ ${CONFIG.PRIVACY_WARNING}
     const syncBtn = document.getElementById('sync-button');
     const originalText = syncBtn.innerHTML;
     const originalDisabled = syncBtn.disabled;
-    syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 上传中...';
+    syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 同步中...';
     syncBtn.disabled = true;
     
     try {
@@ -1819,16 +1876,14 @@ ${CONFIG.PRIVACY_WARNING}
             lastSync: new Date().toISOString()
         };
         
-        // 调用云函数API上传数据
+        // 调用云函数API
         const result = await cloudSyncManager.updateUserData(currentUser, syncData);
         
         if (result.success) {
-            // 更新本地同步信息（仅记录同步行为，不改变存储模式）
+            // 更新本地同步信息
             if (!userData.syncInfo) {
                 userData.syncInfo = {};
             }
-            
-            // 更新同步次数和日期
             if (syncInfo.lastSyncDate !== today) {
                 userData.syncInfo.syncCountToday = 1;
             } else {
@@ -1844,10 +1899,13 @@ ${CONFIG.PRIVACY_WARNING}
             updateSyncStatus();
             updateDataSourceIndicator('synced');
             
-            alert(`✅ 数据上传成功！
+            alert(`✅ 同步成功！
 • 总用户数: ${result.userCount}/${CONFIG.MAX_USERS}
-• 今日剩余上传次数: ${CONFIG.SYNC_LIMIT_PER_DAY - userData.syncInfo.syncCountToday}
-数据已安全上传到云端，您的默认存储方式仍为本地。`);
+• 今日剩余同步次数: ${CONFIG.SYNC_LIMIT_PER_DAY - userData.syncInfo.syncCountToday}
+数据已安全存储在云端！`);
+            
+            // 更新用户名缓存
+            await fetchCloudUsernames();
             
             // 更新用户统计数据
             updateUserStats();
@@ -1855,9 +1913,9 @@ ${CONFIG.PRIVACY_WARNING}
             throw new Error(result.error);
         }
     } catch (error) {
-        console.error('上传失败:', error);
-        alert(`❌ 上传失败: ${error.message}
-数据仍然安全地保存在您的本地设备中，请稍后重试。`);
+        console.error('同步失败:', error);
+        alert(`❌ 同步失败: ${error.message}
+数据已保存在本地，请稍后重试。`);
         updateDataSourceIndicator('local');
     } finally {
         // 恢复按钮状态
