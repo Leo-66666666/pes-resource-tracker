@@ -632,6 +632,44 @@ document.addEventListener('DOMContentLoaded', function() {
             changeDate(1);
         }
     });
+
+    //<!-- ========== 3. 添加实时用户名检查 ========== -->
+    document.getElementById('reg-username').addEventListener('input', async function() {
+        const username = this.value.trim();
+        const statusEl = document.getElementById('username-status');
+        
+        // 清除状态
+        statusEl.textContent = '';
+        statusEl.className = 'input-status';
+        statusEl.style.display = 'none';
+        
+        if (username.length < 3) return;
+        
+        // 添加防抖
+        if (this.usernameCheckTimeout) {
+            clearTimeout(this.usernameCheckTimeout);
+        }
+        
+        this.usernameCheckTimeout = setTimeout(async () => {
+            statusEl.textContent = '检查用户名可用性...';
+            statusEl.className = 'input-status checking';
+            statusEl.style.display = 'block';
+            
+            try {
+                const result = await isUsernameAvailable(username);
+                if (result.available) {
+                    statusEl.textContent = '✓ 用户名可用';
+                    statusEl.className = 'input-status valid';
+                } else {
+                    statusEl.textContent = '✗ 该用户名已被注册';
+                    statusEl.className = 'input-status invalid';
+                }
+            } catch (error) {
+                statusEl.textContent = '⚠️ 检查失败，请稍后重试';
+                statusEl.className = 'input-status invalid';
+            }
+        }, 500);
+    });
     // ========== 添加样式 ==========
     const style = document.createElement('style');
     style.textContent = `
