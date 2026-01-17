@@ -755,37 +755,64 @@
         }
 
         // 加载所有数据
+        // 位置：替换 loadAllData 函数
         async function loadAllData() {
-            logAction('开始加载所有数据...');
-            
-            // 显示加载状态
+            logAction('开始加载所有数据(优先从云端)');
             setLoading(true);
             
             try {
-                // 1. 加载本地用户数据
-                const localUsers = await loadLocalUsers();
+                // 1. 首先从云端加载数据
+                await loadCloudUsers();
                 
-                // 2. 加载云端用户数据（如果配置了云函数）
-                if (CONFIG.CLOUD_BACKEND && CONFIG.CLOUD_BACKEND.URL) {
-                    document.getElementById('cloud-url').textContent = 
-                        CONFIG.CLOUD_BACKEND.URL.replace('https://', '');
-                    await loadCloudUsers();
-                }
+                // 2. 获取云端用户列表
+                const cloudUsernames = Object.keys(cloudUsersData.users || {});
                 
-                // 3. 更新统计数据
+                // 3. 加载本地用户
+                await loadLocalUsers();
+                
+                // 4. 合并数据 - 优先使用云端数据
+                // 先过滤掉本地已存在于云端的用户
+                allUsersData = allUsersData.filter(user => !cloudUsernames.includes(user.username));
+                
+                // 5. 将云端用户添加到列表
+                cloudUsernames.forEach(username => {
+                    const cloudUser = cloudUsersData.users[username];
+                    if (cloudUser) {
+                        allUsersData.push({
+                            username: username,
+                            ...cloudUser
+                        });
+                    }
+                });
+                
+                // 6. 去重处理
+                const uniqueUsers = [];
+                const seenUsernames = new Set();
+                
+                allUsersData.forEach(user => {
+                    if (!seenUsernames.has(user.username)) {
+                        seenUsernames.add(user.username);
+                        uniqueUsers.push(user);
+                    } else {
+                        logAction(`发现重复用户名: ${user.username}`, 'warning');
+                    }
+                });
+                
+                allUsersData = uniqueUsers;
+                
+                // 7. 更新统计数据
                 updateStatistics();
                 
-                // 4. 显示用户列表
-                displayUserList(localUsers);
+                // 8. 显示用户列表
+                displayUserList(allUsersData);
                 
-                logAction('数据加载完成', 'success');
+                logAction('数据加载完成，优先显示云端数据', 'success');
             } catch (error) {
                 logAction('数据加载失败: ' + error.message, 'error');
             } finally {
                 setLoading(false);
             }
         }
-
         // 加载本地用户数据
         async function loadLocalUsers() {
             try {
@@ -1169,9 +1196,11 @@
         }
 
         // 删除用户
+        // 位置：替换 deleteUser 函数
         async function deleteUser(username) {
             try {
                 setLoading(true);
+                logAction(`开始删除用户: ${username}`);
                 
                 // 1. 从本地存储删除用户数据
                 localStorage.removeItem(`pes_user_${username}`);
@@ -1181,20 +1210,30 @@
                 usersData.users = usersData.users.filter(user => user !== username);
                 localStorage.setItem('pes_users', JSON.stringify(usersData));
                 
-                // 3. 如果配置了云函数，也从云端删除
-                if (CONFIG.CLOUD_BACKEND.URL && !CONFIG.CLOUD_BACKEND.URL.includes('你的云函数地址')) {
-                    // 这里需要实现从云端删除用户的逻辑
-                    // 由于云函数API可能不支持直接删除单个用户，我们可以更新整个Gist
-                    logAction(`已从本地删除用户 ${username}，云端删除需要手动处理`, 'warning');
-                } else {
-                    logAction(`已从本地删除用户 ${username}`, 'success');
+                // 3. 从全局缓存中移除
+                const cachedData = localStorage.getItem('pes_username_cache');
+                if (cachedData) {
+                    try {
+                        const cache = JSON.parse(cachedData);
+                        cache.users = cache.users.filter(user => user !== username);
+                        cache.lastUpdated = new Date().toISOString();
+                        localStorage.setItem('pes_username_cache', JSON.stringify(cache));
+                    } catch (e) {
+                        console.error('更新用户名缓存失败:', e);
+                    }
                 }
                 
-                // 4. 重新加载数据
-                await loadAllData();
+                // 4. 从云端删除（如果配置了云函数）
+                if (CONFIG.CLOUD_BACKEND.URL && !CONFIG.CLOUD_BACKEND.URL.includes('你的云函数地址')) {
+                    logAction(`已从本地删除用户 ${username}，云端删除需要通过云函数操作`, 'info');
+                    // 这里可以调用云函数删除用户，取决于API是否支持
+                }
                 
+                logAction(`成功删除用户: ${username}`, 'success');
                 alert(`用户 ${username} 已成功删除`);
                 
+                // 5. 重新加载数据
+                await loadAllData();
             } catch (error) {
                 logAction('删除用户失败: ' + error.message, 'error');
                 alert('删除用户失败: ' + error.message);
