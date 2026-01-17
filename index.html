@@ -102,7 +102,6 @@
         <div id="register-section" class="section hidden">
             <div class="login-container">
                 <h1><i class="fas fa-user-plus"></i> 注册新账户</h1>
-                <!-- 替换注册表单区域 (约在第300-380行) -->
                 <div class="login-form">
                     <h2>创建账户</h2>
                     <!-- 用户数提示 -->
@@ -121,6 +120,28 @@
                     </div>
                     <div class="form-group">
                         <input type="password" id="reg-confirm" placeholder="确认密码" pattern="\d{6}" required>
+                    </div>
+                    <!-- 存储方式选择 -->
+                    <div class="storage-option">
+                        <h3>数据存储方式：</h3>
+                        <div class="option-group">
+                            <label class="option-label">
+                                <input type="radio" name="storage" value="local" checked>
+                                <span class="option-content">
+                                    <i class="fas fa-laptop-house"></i>
+                                    <strong>仅本地存储</strong>
+                                    <small>数据仅保存在您的浏览器中，不会上传</small>
+                                </span>
+                            </label>
+                            <label class="option-label">
+                                <input type="radio" name="storage" value="cloud">
+                                <span class="option-content">
+                                    <i class="fas fa-cloud"></i>
+                                    <strong>云端同步</strong>
+                                    <small>每天限1次，数据通过云函数存储在GitHub</small>
+                                </span>
+                            </label>
+                        </div>
                     </div>
                     <!-- 云端状态提示 -->
                     <div id="register-cloud-status" class="cloud-status-hint hidden">
