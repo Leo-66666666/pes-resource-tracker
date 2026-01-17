@@ -21,6 +21,7 @@ let userData = {
     },
     records: {}
 };
+// 全局用户名缓存 - 仅声明一次
 let usernameCache = {
     users: [],
     lastUpdated: null,
@@ -93,7 +94,8 @@ class CloudSyncManager {
                 return {
                     success: true,
                     message: result.message,
-                    data: result.data
+                    data: result.data,
+                    status: result.status
                 };
             }
             return {
@@ -126,7 +128,8 @@ class CloudSyncManager {
                     success: true,
                     data: result.data || { users: {}, metadata: { totalUsers: 0, version: '1.0' } },
                     lastUpdated: result.lastUpdated,
-                    totalUsers: result.totalUsers || 0
+                    totalUsers: result.totalUsers || 0,
+                    isNew: false
                 };
             }
             throw new Error(result.message || '获取数据失败');
@@ -148,7 +151,8 @@ class CloudSyncManager {
                         }
                     },
                     lastUpdated: usernameCache.lastUpdated,
-                    totalUsers: usernameCache.users.length
+                    totalUsers: usernameCache.users.length,
+                    isNew: false
                 };
             }
             
@@ -236,7 +240,6 @@ function initCloudSync() {
             
             if (result.success) {
                 updateCloudStatus('已连接', 'success');
-                // 成功连接后初始化用户名缓存
                 setupUsernameCacheRefresh();
                 
                 const syncBtn = document.getElementById('sync-button');
@@ -385,6 +388,33 @@ function updateCloudStatus(status, type = 'info') {
     }
 }
 
+// 隐私协议处理
+function agreeTerms() {
+    if (!document.getElementById('agree-terms').checked) {
+        alert('请先阅读并同意隐私协议');
+        return;
+    }
+    
+    localStorage.setItem(CONFIG.PRIVACY_AGREED, 'true');
+    document.getElementById('privacy-agreement').classList.remove('active');
+    continueInitialization();
+}
+
+function disagreeTerms() {
+    alert('您必须同意隐私协议才能使用本工具');
+    window.location.href = 'about:blank';
+}
+
+function continueInitialization() {
+    document.getElementById('current-date').value = currentDate;
+    showLogin();
+    
+    const savedUser = localStorage.getItem('pes_current_user');
+    if (savedUser) document.getElementById('username').value = savedUser;
+    
+    generateCalendar();
+}
+
 // 初始化
 document.addEventListener('DOMContentLoaded', function() {
     const privacyAgreed = localStorage.getItem(CONFIG.PRIVACY_AGREED);
@@ -476,33 +506,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// 隐私协议处理
-function agreeTerms() {
-    if (!document.getElementById('agree-terms').checked) {
-        alert('请先阅读并同意隐私协议');
-        return;
-    }
-    
-    localStorage.setItem(CONFIG.PRIVACY_AGREED, 'true');
-    document.getElementById('privacy-agreement').classList.remove('active');
-    continueInitialization();
-}
-
-function disagreeTerms() {
-    alert('您必须同意隐私协议才能使用本工具');
-    window.location.href = 'about:blank';
-}
-
-function continueInitialization() {
-    document.getElementById('current-date').value = currentDate;
-    showLogin();
-    
-    const savedUser = localStorage.getItem('pes_current_user');
-    if (savedUser) document.getElementById('username').value = savedUser;
-    
-    generateCalendar();
-}
-
 // 用户管理
 async function updateUserStats() {
     try {
@@ -591,18 +594,6 @@ async function login() {
         updateStats();
         updateSyncStatus();
         updateUserStats();
-        
-        // 从云端加载数据
-        if (userData.syncInfo?.storageMode === 'cloud' && cloudSyncManager) {
-            try {
-                const cloudResult = await cloudSyncManager.getUserData(username);
-                if (cloudResult.success && cloudResult.data) {
-                    console.log('发现云端数据，准备合并...');
-                }
-            } catch (error) {
-                console.log('从云端加载数据失败，继续使用本地数据:', error.message);
-            }
-        }
     } catch (error) {
         alert('登录失败：' + error.message);
     }
@@ -1209,7 +1200,7 @@ function exportData() {
     }
     
     const dataStr = JSON.stringify(userData, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+    const dataUri = 'application/json;charset=utf-8,' + encodeURIComponent(dataStr);
     const exportFileDefaultName = `pes_data_${currentUser}_${currentDate}.json`;
     const linkElement = document.createElement('a');
     linkElement.setAttribute('href', dataUri);
