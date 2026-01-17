@@ -7,6 +7,9 @@ const CONFIG = {
             TEST: '/test',
             GIST: '/gist',
             USER: '/user'
+            // 添加新端点
+            CHECK_USERNAME: '/check-username',
+            REGISTER: '/register'
         }
     },
     
