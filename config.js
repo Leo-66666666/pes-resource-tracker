@@ -6,7 +6,7 @@ const CONFIG = {
         API_PATHS: {
             TEST: '/test',
             GIST: '/gist',
-            USER: '/user'
+            USER: '/user',
             // 添加新端点
             CHECK_USERNAME: '/check-username',
             REGISTER: '/register'
