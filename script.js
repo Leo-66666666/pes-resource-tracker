@@ -221,7 +221,7 @@ class CloudSyncManager {
             if (result.success) {
                 return {
                     success: true,
-                     result.data,
+                    data: result.data,
                     exists: !!result.data,
                     message: result.message || '获取用户数据成功'
                 };
