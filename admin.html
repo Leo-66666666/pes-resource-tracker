@@ -1128,12 +1128,51 @@ ${usernames}`);
             
             document.getElementById('confirm-modal').classList.add('active');
         }
+
+        async function clearCloudDataConfirmed(password) {
+            try {
+                setLoading(true);
+                
+                if (CONFIG.CLOUD_BACKEND.URL && !CONFIG.CLOUD_BACKEND.URL.includes('你的云函数地址')) {
+                    const response = await fetch(`${CONFIG.CLOUD_BACKEND.URL}/clear-cloud`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            adminPassword: password
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    
+                    const result = await response.json();
+                    if (result.success) {
+                        logAction('云端数据已清空', 'success');
+                        alert('云端数据已清空！');
+                        // 重新加载云端数据
+                        await loadCloudUsers();
+                    } else {
+                        throw new Error(result.message || '清空云端数据失败');
+                    }
+                } else {
+                    alert('云函数地址未配置，无法清空云端数据');
+                }
+            } catch (error) {
+                logAction('清空云端数据失败: ' + error.message, 'error');
+                alert('清空云端数据失败: ' + error.message);
+            } finally {
+                setLoading(false);
+            }
+        }
         
         // 执行确认的操作
         function executeConfirmedAction() {
             const password = document.getElementById('confirm-password')?.value;
             // 验证管理员密码
-            if (!password || (password !== CONFIG.ADMIN_PASSWORD && password !== '123456')) {
+            if (!password || (password !== '114514' && password !== '123456')) {
                 alert('管理员密码错误！');
                 return;
             }
@@ -1147,7 +1186,7 @@ ${usernames}`);
                         clearLocalData();
                         break;
                     case 'clear_cloud':
-                        clearCloudDataConfirmed();
+                        clearCloudDataConfirmed(password);
                         break;
                     case 'reset_system':
                         resetSystemConfirmed();
@@ -1226,63 +1265,63 @@ ${usernames}`);
         
         // 上传所有数据到云端
         async function syncAllToCloud() {
-            if (!window.cloudSyncManager) {
-                alert('云函数未配置，无法上传数据');
+            if (!confirm('这将把所有本地用户数据同步到云端，确定要继续吗？')) {
                 return;
             }
             
-            if (!confirm('⚠️ 确认上传所有用户数据到云端\n这将覆盖云端现有数据！\n确定要继续吗？')) {
+            // 严格检查云函数是否可用
+            if (!CONFIG.CLOUD_BACKEND.URL || CONFIG.CLOUD_BACKEND.URL.includes('你的云函数地址')) {
+                alert('⚠️ 云函数配置不完整，无法同步数据！');
+                return;
+            }
+            
+            if (!cloudSyncManager) {
+                alert('⚠️ 云函数同步管理器未初始化，无法同步数据！');
                 return;
             }
             
             try {
                 setLoading(true);
-                logAction('开始上传所有用户数据到云端...', 'info');
+                logAction('开始同步所有用户数据到云端...');
                 
-                // 这里需要实现批量上传逻辑
-                // 由于云函数API可能需要逐个用户处理，可以使用循环
                 let successCount = 0;
                 let failCount = 0;
                 
+                // 逐个同步用户数据
                 for (const user of allUsersData) {
                     try {
-                        const result = await window.cloudSyncManager.updateUserToCloud(user.username, user);
+                        const result = await cloudSyncManager.updateUserData(user.username, user);
                         if (result.success) {
                             successCount++;
-                            user.syncInfo = {
-                                ...user.syncInfo,
-                                lastUploadTime: new Date().toISOString(),
-                                uploadCount: (user.syncInfo?.uploadCount || 0) + 1
-                            };
-                            localStorage.setItem(`pes_user_${user.username}`, JSON.stringify(user));
+                            logAction(`用户 ${user.username} 同步成功`);
                         } else {
                             failCount++;
-                            logAction(`上传用户 ${user.username} 失败: ${result.message}`, 'error');
+                            logAction(`用户 ${user.username} 同步失败: ${result.message || '未知错误'}`, 'error');
                         }
                     } catch (error) {
                         failCount++;
-                        logAction(`上传用户 ${user.username} 出错: ${error.message}`, 'error');
+                        logAction(`用户 ${user.username} 同步出错: ${error.message}`, 'error');
                     }
                 }
                 
-                logAction(`批量上传完成，成功: ${successCount}, 失败: ${failCount}`, 
-                    successCount > 0 ? 'success' : 'error');
+                const message = `批量同步完成！
+        成功: ${successCount} 个用户
+        失败: ${failCount} 个用户`;
                 
-                alert(`批量上传完成！
-成功: ${successCount} 个用户
-失败: ${failCount} 个用户
-查看日志获取详细信息`);
+                logAction(message, successCount > 0 ? 'success' : 'warning');
+                alert(message);
                 
-                // 重新加载数据
+                // 重新加载云端数据
                 await loadCloudUsers();
                 updateStatistics();
             } catch (error) {
-                logAction('批量上传失败: ' + error.message, 'error');
-                alert('批量上传失败: ' + error.message);
+                logAction('批量同步失败: ' + error.message, 'error');
+                alert('批量同步失败: ' + error.message);
             } finally {
                 setLoading(false);
             }
         }
+
         
         // 创建完整备份
         function backupAllData() {
@@ -1503,8 +1542,8 @@ ${issues.join('\n')}`;
                 <li>本地数据将不受影响</li>
             </ul>
             <p style="margin-top: 15px; padding: 10px; background: #f8d7da; border-radius: 4px; color: #721c24;">
-                <i class="fas fa-radiation"></i> 请输入 "<strong>DELETE CLOUD DATA</strong>" 确认操作：<br>
-                <input type="text" id="confirm-text" style="width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #dc3545;">
+                <i class="fas fa-radiation"></i> 请输入管理员密码清空云端数据：<br>
+                <input type="password" id="confirm-password" style="width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #dc3545;">
             </p>
             `;
             
