@@ -1293,19 +1293,33 @@ function updateSyncStatus() {
 
 // 更新数据来源指示器
 function updateDataSourceIndicator(source) {
-    document.getElementById('data-source-local').classList.add('hidden');
-    document.getElementById('data-source-synced').classList.add('hidden');
-    document.getElementById('data-source-outdated').classList.add('hidden');
+    // 先获取元素，检查是否存在
+    const localBadge = document.getElementById('data-source-local');
+    const cloudBadge = document.getElementById('data-source-cloud');
     
-    if (source === 'local') {
-        document.getElementById('data-source-local').classList.remove('hidden');
-    } else if (source === 'synced') {
-        document.getElementById('data-source-synced').classList.remove('hidden');
-    } else if (source === 'outdated') {
-        document.getElementById('data-source-outdated').classList.remove('hidden');
+    // 确保元素存在再操作
+    if (localBadge) {
+        localBadge.classList.remove('hidden');
+    }
+    if (cloudBadge) {
+        cloudBadge.classList.add('hidden');
+    }
+    
+    if (source === 'synced' || source === 'outdated') {
+        if (localBadge) {
+            localBadge.classList.add('hidden');
+        }
+        if (cloudBadge) {
+            cloudBadge.classList.remove('hidden');
+            // 如果是过期状态，添加特殊样式
+            if (source === 'outdated') {
+                cloudBadge.style.color = '#ffc107';
+            } else {
+                cloudBadge.style.color = '';
+            }
+        }
     }
 }
-
 // 导出数据（用于备份）
 function exportData() {
     if (!currentUser) {
@@ -1635,6 +1649,71 @@ async function testCloudConnection() {
         if (testBtn) {
             testBtn.innerHTML = '<i class="fas fa-server"></i> 测试云连接';
             testBtn.disabled = false;
+        }
+    }
+}
+
+// 上传到云端
+function uploadToCloud() {
+    if (!currentUser) {
+        alert('请先登录！');
+        return;
+    }
+    syncToCloud(); // 复用现有的同步功能
+}
+
+// 从云端下载
+async function downloadFromCloud() {
+    if (!currentUser) {
+        alert('请先登录！');
+        return;
+    }
+    if (!cloudSyncManager) {
+        alert('云同步功能未配置，请联系管理员！');
+        return;
+    }
+    // 严格检查云函数是否可用
+    if (!isCloudAvailable) {
+        alert('⚠️ 云函数连接不可用，无法下载数据！\n请检查网络连接或联系管理员。');
+        return;
+    }
+    
+    if (!confirm('⚠️ 从云端下载会覆盖本地数据！\n确定要继续吗？')) {
+        return;
+    }
+    
+    // 显示加载状态
+    const downloadBtn = document.querySelector('.btn-download');
+    const originalText = downloadBtn.innerHTML;
+    downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 下载中...';
+    downloadBtn.disabled = true;
+    
+    try {
+        const result = await cloudSyncManager.getUserData(currentUser);
+        if (result.success && result.data) {
+            // 保存用户数据到localStorage
+            localStorage.setItem(`pes_user_${currentUser}`, JSON.stringify(result.data));
+            userData = result.data;
+            
+            // 更新界面
+            updateDataSourceIndicator('synced');
+            loadDateData();
+            updateStats();
+            generateCalendar();
+            updateUserStats();
+            alert('✅ 数据下载成功！\n已从云端恢复最新数据。');
+        } else {
+            throw new Error(result.message || '下载数据失败');
+        }
+    } catch (error) {
+        console.error('下载失败:', error);
+        alert(`❌ 下载失败: ${error.message}\n请稍后重试。`);
+        updateDataSourceIndicator('local');
+    } finally {
+        // 恢复按钮状态
+        if (downloadBtn) {
+            downloadBtn.innerHTML = originalText;
+            downloadBtn.disabled = false;
         }
     }
 }
