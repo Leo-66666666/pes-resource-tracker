@@ -156,6 +156,18 @@
                         <i class="fas fa-users"></i>
                         <span id="user-count">0</span>/100
                     </span>
+                    <!-- 添加同步状态显示区域 -->
+                  <div class="sync-status-group">
+                    <div class="sync-status-item">
+                      <span>今日上传:</span>
+                      <span id="sync-count">0</span>/<span>5</span>
+                      <span class="sync-status" id="sync-status" title="今日尚未同步"></span>
+                    </div>
+                    <div class="sync-status-item">
+                      <span>今日下载:</span>
+                      <span id="download-count">0</span>/<span>5</span>
+                    </div>
+                  </div>
                     <button onclick="exportData()" class="btn-small btn-export">
                         <i class="fas fa-download"></i> 导出
                     </button>
