@@ -1291,21 +1291,28 @@ function updateSyncStatus() {
     const syncInfo = userData.syncInfo || {};
     const today = new Date().toDateString();
     
-    const syncCountElement = document.getElementById('sync-count');
-    const syncStatusElement = document.getElementById('sync-status');
-    
-    if (syncCountElement) {
-        syncCountElement.textContent = syncInfo.syncCountToday || 0;
+    // 更新上传次数显示
+    const uploadCountElement = document.getElementById('sync-count');
+    if (uploadCountElement) {
+        uploadCountElement.textContent = syncInfo.syncCountToday || 0;
     }
     
+    // 更新上传状态
+    const syncStatusElement = document.getElementById('sync-status');
     if (syncStatusElement) {
         if (syncInfo.lastSyncDate === today && syncInfo.syncCountToday >= CONFIG.SYNC_LIMIT_PER_DAY) {
             syncStatusElement.className = 'sync-status limit-reached';
-            syncStatusElement.title = '今日同步次数已用完';
+            syncStatusElement.title = '今日上传次数已用完';
         } else {
             syncStatusElement.className = 'sync-status';
-            syncStatusElement.title = `今日已同步: ${syncInfo.syncCountToday || 0}/${CONFIG.SYNC_LIMIT_PER_DAY}`;
+            syncStatusElement.title = `今日上传: ${syncInfo.syncCountToday || 0}/${CONFIG.SYNC_LIMIT_PER_DAY} 次`;
         }
+    }
+    
+    // 如果有下载次数显示区域，更新它
+    const downloadCountElement = document.getElementById('download-count');
+    if (downloadCountElement) {
+        downloadCountElement.textContent = syncInfo.downloadCountToday || 0;
     }
 }
 
@@ -1696,6 +1703,16 @@ async function downloadFromCloud() {
         return;
     }
     
+    // 检查下载限制
+    const syncInfo = userData.syncInfo || {};
+    const today = new Date().toDateString();
+    const downloadCountToday = syncInfo.downloadCountToday || 0;
+    
+    if (syncInfo.lastDownloadDate === today && downloadCountToday >= CONFIG.DOWNLOAD_LIMIT_PER_DAY) {
+        alert(`⚠️ 今日下载次数已达上限 ${CONFIG.DOWNLOAD_LIMIT_PER_DAY} 次！\n请明天再试。`);
+        return;
+    }
+    
     if (!confirm('⚠️ 从云端下载会覆盖本地数据！\n确定要继续吗？')) {
         return;
     }
@@ -1713,13 +1730,30 @@ async function downloadFromCloud() {
             localStorage.setItem(`pes_user_${currentUser}`, JSON.stringify(result.data));
             userData = result.data;
             
+            // 更新下载统计
+            if (!userData.syncInfo) {
+                userData.syncInfo = {};
+            }
+            if (syncInfo.lastDownloadDate !== today) {
+                userData.syncInfo.downloadCountToday = 1;
+                userData.syncInfo.lastDownloadDate = today;
+            } else {
+                userData.syncInfo.downloadCountToday = (syncInfo.downloadCountToday || 0) + 1;
+            }
+            // 保存到本地
+            localStorage.setItem(`pes_user_${currentUser}`, JSON.stringify(userData));
+            
             // 更新界面
             updateDataSourceIndicator('synced');
             loadDateData();
             updateStats();
             generateCalendar();
             updateUserStats();
-            alert('✅ 数据下载成功！\n已从云端恢复最新数据。');
+            updateSyncStatus(); // 更新状态显示
+            
+            alert(`✅ 数据下载成功！
+• 已从云端恢复最新数据
+• 今日剩余下载次数: ${Math.max(0, CONFIG.DOWNLOAD_LIMIT_PER_DAY - userData.syncInfo.downloadCountToday)}`);
         } else {
             throw new Error(result.message || '下载数据失败');
         }
