@@ -775,6 +775,38 @@
                     };
                 }
             }
+
+            async updateUserData(username, userData) {
+                try {
+                    const response = await this.sendRequest(this.buildUrl('/user'), {
+                        method: 'POST',
+                        body: JSON.stringify({ username, userData })
+                    });
+                    return await response.json();
+                } catch (error) {
+                    return {
+                        success: false,
+                        error: error.message,
+                        message: '更新用户数据失败'
+                    };
+                }
+            }
+
+            async checkUsernameAvailability(username) {
+                try {
+                    const response = await this.sendRequest(this.buildUrl('/check-username'), {
+                        method: 'POST',
+                        body: JSON.stringify({ username })
+                    });
+                    return await response.json();
+                } catch (error) {
+                    return {
+                        success: false,
+                        error: error.message,
+                        message: '检查用户名失败'
+                    };
+                }
+            }
         }
         
         // 加载所有数据
@@ -1287,18 +1319,18 @@ ${usernames}`);
         
         // 上传所有数据到云端
         async function syncAllToCloud() {
-            if (!confirm('这将把所有本地用户数据同步到云端，确定要继续吗？')) {
-                return;
-            }
-            
             // 严格检查云函数是否可用
             if (!CONFIG.CLOUD_BACKEND.URL || CONFIG.CLOUD_BACKEND.URL.includes('你的云函数地址')) {
                 alert('⚠️ 云函数配置不完整，无法同步数据！');
                 return;
             }
             
-            if (!cloudSyncManager) {
+            if (!window.cloudSyncManager) {
                 alert('⚠️ 云函数同步管理器未初始化，无法同步数据！');
+                return;
+            }
+            
+            if (!confirm('这将把所有本地用户数据同步到云端，确定要继续吗？')) {
                 return;
             }
             
