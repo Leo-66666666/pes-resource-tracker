@@ -538,7 +538,6 @@ function showMain() {
 }
 
 // 用户登录
-// 用户登录
 async function login() {
     const username = document.getElementById('username').value.trim();
     const password = document.getElementById('password').value.trim();
@@ -1345,6 +1344,7 @@ function updateDataSourceIndicator(source) {
         }
     }
 }
+
 // 导出数据（用于备份）
 function exportData() {
     if (!currentUser) {
@@ -1687,7 +1687,6 @@ function uploadToCloud() {
     syncToCloud(); // 复用现有的同步功能
 }
 
-// 从云端下载
 async function downloadFromCloud() {
     if (!currentUser) {
         alert('请先登录！');
@@ -1702,6 +1701,10 @@ async function downloadFromCloud() {
         alert('⚠️ 云函数连接不可用，无法下载数据！\n请检查网络连接或联系管理员。');
         return;
     }
+    
+    // 保存当前的上传计数（修复核心：在覆盖前保存本地上传计数）
+    const localSyncCount = userData.syncInfo?.syncCountToday || 0;
+    const localLastSyncDate = userData.syncInfo?.lastSyncDate || '';
     
     // 检查下载限制
     const syncInfo = userData.syncInfo || {};
@@ -1730,16 +1733,21 @@ async function downloadFromCloud() {
             localStorage.setItem(`pes_user_${currentUser}`, JSON.stringify(result.data));
             userData = result.data;
             
-            // 更新下载统计
+            // 修复：恢复本地的上传计数，避免被覆盖
             if (!userData.syncInfo) {
                 userData.syncInfo = {};
             }
+            userData.syncInfo.syncCountToday = localSyncCount;
+            userData.syncInfo.lastSyncDate = localLastSyncDate;
+            
+            // 更新下载统计
             if (syncInfo.lastDownloadDate !== today) {
                 userData.syncInfo.downloadCountToday = 1;
                 userData.syncInfo.lastDownloadDate = today;
             } else {
                 userData.syncInfo.downloadCountToday = (syncInfo.downloadCountToday || 0) + 1;
             }
+            
             // 保存到本地
             localStorage.setItem(`pes_user_${currentUser}`, JSON.stringify(userData));
             
