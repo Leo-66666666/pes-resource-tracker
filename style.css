@@ -1522,4 +1522,22 @@ button.secondary {
         color: #856404;
         border-left: 4px solid #ffc107;
     }
+
+    .sync-status-group {
+        display: flex;
+        gap: 15px;
+        margin-top: 10px;
+        font-size: 14px;
+        color: #666;
+    }
+    
+    .sync-status-item {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+    
+    .sync-status-item span {
+        font-weight: normal;
+    }
 }
