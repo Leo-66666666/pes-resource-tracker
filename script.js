@@ -661,7 +661,7 @@ async function register() {
             createdAt: new Date().toISOString(),
             lastLogin: new Date().toISOString(),
             syncInfo: {
-                storageMode: storageMode,
+                storageMode: 'cloud',
                 lastSyncDate: '',
                 syncCountToday: 0
             },
