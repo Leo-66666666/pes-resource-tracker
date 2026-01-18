@@ -1,4 +1,12 @@
-// 全局变量
+// 配置验证
+setTimeout(() => {
+    console.log('=== 配置验证 ===');
+    console.log('云函数地址:', CONFIG.CLOUD_BACKEND.URL);
+    console.log('最大用户数:', CONFIG.MAX_USERS);
+    console.log('=== 验证结束 ===');
+}, 100);
+
+// 状态管理
 let currentUser = null;
 let currentDate = new Date().toISOString().split('T')[0];
 let userData = {
@@ -9,38 +17,47 @@ let userData = {
     syncInfo: {
         lastSyncDate: '',
         syncCountToday: 0,
-        lastUploadTime: '',
-        lastDownloadTime: ''
+        storageMode: 'local'  // 'local' 或 'cloud'
     },
     records: {}
 };
 let cloudSyncManager = null;
-let usernameCache = {
-    users: [],
-    lastUpdated: null,
-    isLoading: false
-};
+let isCloudAvailable = false;  // 云函数是否可用
 
 // 云函数同步管理器
 class CloudSyncManager {
     constructor() {
+        console.log('正在初始化CloudSyncManager...');
         this.baseURL = CONFIG.CLOUD_BACKEND.URL;
         this.apiPaths = CONFIG.CLOUD_BACKEND.API_PATHS;
         
+        // 检查配置
         if (!this.baseURL || this.baseURL.includes('你的云函数地址')) {
-            throw new Error('云函数配置不完整');
+            console.error('云函数配置错误:');
+            console.error('请设置正确的云函数地址');
+            throw new Error('云函数配置不完整，请在CONFIG.CLOUD_BACKEND中设置URL');
         }
         
+        console.log('云函数配置验证通过:', {
+            baseURL: this.baseURL,
+            apiPaths: this.apiPaths
+        });
+        
         this.maxRetries = 2;
-        this.retryDelay = 1000;
+        this.retryDelay = 1000; // 1秒
+        console.log('CloudSyncManager初始化完成');
     }
     
+    // 构建完整URL
     buildUrl(path) {
         return `${this.baseURL}${path}`;
     }
     
+    // 发送请求（带重试）
     async sendRequest(url, options = {}, retryCount = 0) {
         try {
+            console.log(`发送请求到: ${url}`, options.method || 'GET');
+            // 添加默认请求头
             const requestOptions = {
                 ...options,
                 headers: {
@@ -53,19 +70,35 @@ class CloudSyncManager {
             };
             
             const response = await fetch(url, requestOptions);
+            console.log(`响应状态: ${response.status} ${response.statusText}`);
             
             if (!response.ok) {
+                // 如果是5xx错误，重试
                 if (response.status >= 500 && retryCount < this.maxRetries) {
+                    console.log(`服务器错误 ${response.status}，第${retryCount + 1}次重试...`);
                     await new Promise(resolve => setTimeout(resolve, this.retryDelay));
                     return this.sendRequest(url, options, retryCount + 1);
                 }
                 
+                // 其他错误，直接抛出
                 const errorText = await response.text();
+                console.error(`HTTP错误 ${response.status}:`, errorText.substring(0, 200));
+                
+                if (response.status === 401 || response.status === 403) {
+                    throw new Error('访问被拒绝，请检查云函数配置');
+                }
+                if (response.status === 404) {
+                    throw new Error('云函数接口不存在，请检查路径配置');
+                }
                 throw new Error(`HTTP ${response.status}: ${errorText.substring(0, 100)}`);
             }
+            
             return response;
         } catch (error) {
+            console.error(`请求失败:`, error.message);
+            // 网络错误，重试
             if (retryCount < this.maxRetries && !error.message.includes('HTTP')) {
+                console.log(`网络错误，第${retryCount + 1}次重试...`);
                 await new Promise(resolve => setTimeout(resolve, this.retryDelay));
                 return this.sendRequest(url, options, retryCount + 1);
             }
@@ -73,23 +106,41 @@ class CloudSyncManager {
         }
     }
     
+    // 测试连接
     async testConnection() {
+        console.log('开始测试云函数连接...');
         try {
-            const testUrl = this.buildUrl(this.apiPaths.TEST || '/test');
-            const response = await this.sendRequest(testUrl, { method: 'GET' });
-            const result = await response.json();
+            const testUrl = `${this.baseURL}/test`;
+            console.log('测试URL:', testUrl);
+            const response = await fetch(testUrl, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
             
+            console.log('响应状态:', response.status, response.statusText);
+            const result = await response.json();
+            console.log('完整响应:', result);
+            
+            // 检查响应结构
             if (result.success) {
+                // 云函数返回的结构是 {success: true, status: 200, data: {...}, message: '...'}
                 return {
                     success: true,
                     message: result.message,
-                    data: result.data,
+                    data: result.data, // 这里包含了GitHub用户信息
                     status: result.status
                 };
             } else {
-                throw new Error(result.message || '连接测试失败');
+                return {
+                    success: false,
+                    error: result.error,
+                    message: result.message
+                };
             }
         } catch (error) {
+            console.error('连接测试失败:', error);
             return {
                 success: false,
                 error: error.message,
@@ -98,60 +149,7 @@ class CloudSyncManager {
         }
     }
     
-    async getAllUsersData() {
-        try {
-            const url = this.buildUrl(this.apiPaths.GIST || '/gist');
-            const response = await this.sendRequest(url, { method: 'GET' });
-            const result = await response.json();
-            
-            if (result.success) {
-                // 更新用户名缓存
-                if (result.data && result.data.users) {
-                    usernameCache.users = Object.keys(result.data.users);
-                    usernameCache.lastUpdated = new Date().toISOString();
-                    localStorage.setItem('pes_username_cache', JSON.stringify(usernameCache));
-                }
-                
-                return {
-                    success: true,
-                    data: result.data || { users: {}, metadata: { totalUsers: 0, version: '1.0' } },
-                    lastUpdated: result.lastUpdated,
-                    totalUsers: result.totalUsers || 0
-                };
-            } else {
-                throw new Error(result.message || '获取数据失败');
-            }
-        } catch (error) {
-            console.error('获取数据失败:', error);
-            
-            // 返回缓存数据（如果有的话）
-            if (usernameCache.users.length > 0) {
-                return {
-                    success: true,
-                    data: {
-                        users: usernameCache.users.reduce((acc, username) => {
-                            acc[username] = { username };
-                            return acc;
-                        }, {}),
-                        metadata: { 
-                            totalUsers: usernameCache.users.length,
-                            lastUpdated: usernameCache.lastUpdated,
-                            version: '1.0' 
-                        }
-                    },
-                    lastUpdated: usernameCache.lastUpdated,
-                    totalUsers: usernameCache.users.length
-                };
-            }
-            
-            return {
-                success: false,
-                error: error.message,
-                message: '获取云端数据失败'
-            };
-        }
-    }
-    
+    // 检查用户名是否可用
     async checkUsernameAvailability(username) {
         try {
             const url = this.buildUrl(this.apiPaths.CHECK_USERNAME || '/check-username');
@@ -159,8 +157,8 @@ class CloudSyncManager {
                 method: 'POST',
                 body: JSON.stringify({ username })
             });
-            const result = await response.json();
             
+            const result = await response.json();
             if (result.success) {
                 return {
                     available: result.available,
@@ -172,56 +170,58 @@ class CloudSyncManager {
             }
         } catch (error) {
             console.error('检查用户名失败:', error);
-            return {
-                available: true, // 网络错误时假设可用，但提示用户
-                exists: false,
-                error: error.message,
-                message: '网络连接问题，无法验证用户名唯一性'
-            };
+            throw error;
         }
     }
     
-    async registerUsername(username, userData) {
+    // 获取所有用户数据
+    async getAllUsersData() {
+        console.log('开始获取所有用户数据...');
         try {
-            const url = this.buildUrl(this.apiPaths.REGISTER || '/register');
+            const url = this.buildUrl(this.apiPaths.GIST || '/gist');
+            console.log('获取数据URL:', url);
             const response = await this.sendRequest(url, {
-                method: 'POST',
-                body: JSON.stringify({ username, userData })
+                method: 'GET'
             });
             const result = await response.json();
+            console.log('获取数据结果:', result.success ? '成功' : '失败');
             
             if (result.success) {
                 return {
                     success: true,
-                    message: result.message || '用户名注册成功',
-                    userCount: result.userCount || 0,
-                    lastUpdated: result.lastUpdated
+                     result.data || { users: {}, metadata: { totalUsers: 0, version: '1.0' } },
+                    lastUpdated: result.lastUpdated,
+                    totalUsers: result.totalUsers || 0,
+                    isNew: false
                 };
             } else {
-                throw new Error(result.message || '注册用户名失败');
+                throw new Error(result.error || result.message || '获取数据失败');
             }
         } catch (error) {
-            console.error('注册用户名失败:', error);
-            return {
-                success: false,
-                error: error.message,
-                message: '无法注册用户名'
-            };
+            console.error('获取数据失败:', error);
+            throw error;
         }
     }
     
+    // 获取特定用户数据
     async getUserData(username) {
+        console.log(`开始获取用户数据: ${username}`);
         try {
-            if (!username) throw new Error('用户名不能为空');
-            
+            if (!username) {
+                throw new Error('用户名不能为空');
+            }
             const url = this.buildUrl(`${this.apiPaths.USER || '/user'}?username=${encodeURIComponent(username)}`);
-            const response = await this.sendRequest(url, { method: 'GET' });
+            console.log('获取用户数据URL:', url);
+            const response = await this.sendRequest(url, {
+                method: 'GET'
+            });
             const result = await response.json();
+            console.log('获取用户数据结果:', result.success ? '成功' : '失败');
             
             if (result.success) {
                 return {
                     success: true,
-                    data: result.data,
+                     result.data,
                     exists: !!result.data,
                     message: result.message || '获取用户数据成功'
                 };
@@ -230,268 +230,150 @@ class CloudSyncManager {
             }
         } catch (error) {
             console.error('获取用户数据失败:', error);
-            return {
-                success: false,
-                error: error.message,
-                message: '获取用户数据失败'
-            };
+            throw error;
         }
     }
     
-    async updateUserToCloud(username, userData) {
+    // 更新用户数据到云端
+    async updateUserData(username, userData) {
+        console.log(`开始更新用户数据到云端: ${username}`);
         try {
-            if (!username || !userData) throw new Error('用户名和用户数据不能为空');
-            
+            if (!username || !userData) {
+                throw new Error('用户名和用户数据不能为空');
+            }
             const url = this.buildUrl(this.apiPaths.USER || '/user');
+            console.log('更新数据URL:', url);
             const response = await this.sendRequest(url, {
                 method: 'POST',
                 body: JSON.stringify({
                     username: username,
-                    userData: userData,
-                    action: 'upload'
+                    userData: userData
                 })
             });
             const result = await response.json();
+            console.log('更新数据结果:', result.success ? '成功' : '失败');
             
             if (result.success) {
                 return {
                     success: true,
-                    message: result.message || '数据上传成功',
+                    message: result.message || '数据同步成功',
                     userCount: result.userCount || 0,
                     lastUpdated: result.lastUpdated
                 };
             } else {
-                throw new Error(result.message || '上传数据失败');
+                throw new Error(result.message || '更新数据失败');
             }
         } catch (error) {
-            console.error('上传数据失败:', error);
-            return {
-                success: false,
-                error: error.message,
-                message: '上传到云端失败'
-            };
-        }
-    }
-    
-    async downloadUserFromCloud(username) {
-        try {
-            if (!username) throw new Error('用户名不能为空');
-            
-            const url = this.buildUrl(`${this.apiPaths.USER || '/user'}?username=${encodeURIComponent(username)}&action=download`);
-            const response = await this.sendRequest(url, { method: 'GET' });
-            const result = await response.json();
-            
-            if (result.success) {
-                return {
-                    success: true,
-                    data: result.data,
-                    lastUpdated: result.lastUpdated,
-                    message: result.message || '数据下载成功'
-                };
-            } else {
-                throw new Error(result.message || '下载数据失败');
-            }
-        } catch (error) {
-            console.error('下载数据失败:', error);
-            return {
-                success: false,
-                error: error.message,
-                message: '从云端下载失败'
-            };
+            console.error('更新数据失败:', error);
+            throw error;
         }
     }
 }
 
-// 初始化云函数同步
+// 初始化云函数同步管理器
 function initCloudSync() {
     console.log('初始化云函数同步管理器...');
     try {
         // 验证配置
         if (!CONFIG.CLOUD_BACKEND.URL || CONFIG.CLOUD_BACKEND.URL.includes('你的云函数地址')) {
             console.warn('云函数配置不完整，同步功能不可用');
+            // 在界面上显示警告
             updateCloudStatus('未配置', 'warning');
+            isCloudAvailable = false;
             return;
         }
         
+        // 创建管理器实例
         cloudSyncManager = new CloudSyncManager();
         console.log('CloudSyncManager创建成功');
-        updateCloudStatus('检测中', 'info');
         
         // 测试连接
         setTimeout(async () => {
-            const result = await cloudSyncManager.testConnection();
-            
-            if (result.success) {
-                updateCloudStatus('已连接', 'success');
-                console.log('云函数连接测试成功:', result.message);
-                
-                // 初始化用户名缓存
-                await fetchAndCacheUsernames();
-                
-                // 更新按钮状态
-                document.getElementById('upload-button').disabled = false;
-                document.getElementById('upload-button').title = '上传数据到云端';
-            } else {
-                updateCloudStatus('连接失败', 'error');
-                console.warn('云函数连接测试失败:', result.message);
-                
-                // 更新按钮状态
-                document.getElementById('upload-button').innerHTML = '<i class="fas fa-exclamation-triangle"></i> 连接失败';
-                document.getElementById('upload-button').title = result.message;
-                document.getElementById('upload-button').disabled = true;
+            console.log('开始测试云函数连接...');
+            try {
+                const result = await cloudSyncManager.testConnection();
+                // 更新云端状态显示
+                if (result.success) {
+                    updateCloudStatus('已连接', 'success');
+                    console.log('云函数连接测试成功:', result.message);
+                    // 更新同步按钮状态
+                    const syncBtn = document.getElementById('sync-button');
+                    if (syncBtn) {
+                        syncBtn.innerHTML = '<i class="fas fa-cloud"></i> 同步到云端';
+                        syncBtn.title = '点击同步数据到云端';
+                        syncBtn.disabled = false;
+                    }
+                    // 标记云函数可用
+                    isCloudAvailable = true;
+                } else {
+                    updateCloudStatus('连接失败', 'error');
+                    console.warn('云函数连接测试失败:', result.message);
+                    // 更新同步按钮状态
+                    const syncBtn = document.getElementById('sync-button');
+                    if (syncBtn) {
+                        syncBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> 连接失败';
+                        syncBtn.title = result.message;
+                        syncBtn.disabled = true;
+                    }
+                    isCloudAvailable = false;
+                }
+            } catch (error) {
+                console.error('云函数连接测试异常:', error);
+                updateCloudStatus('连接异常', 'error');
+                isCloudAvailable = false;
             }
         }, 500);
     } catch (error) {
         console.error('初始化云函数同步管理器失败:', error);
         updateCloudStatus('初始化失败', 'error');
-    }
-}
-
-// 获取并缓存用户名
-async function fetchAndCacheUsernames() {
-    if (!cloudSyncManager) return;
-    
-    try {
-        console.log('正在获取并缓存用户名...');
-        usernameCache.isLoading = true;
-        
-        const result = await cloudSyncManager.getAllUsersData();
-        
-        if (result.success && result.data) {
-            const cloudUsers = Object.keys(result.data.users || {});
-            usernameCache.users = cloudUsers;
-            usernameCache.lastUpdated = new Date().toISOString();
-            localStorage.setItem('pes_username_cache', JSON.stringify(usernameCache));
-            console.log(`缓存了 ${cloudUsers.length} 个用户名`);
-        }
-    } catch (error) {
-        console.error('获取用户名失败:', error);
-    } finally {
-        usernameCache.isLoading = false;
-    }
-}
-
-// 验证用户名唯一性
-async function validateUsernameUniqueness(username, isRegistration = false) {
-    if (!cloudSyncManager) {
-        throw new Error('云函数未配置，无法验证用户名唯一性');
-    }
-    
-    const usernameStatus = document.getElementById('username-status');
-    if (usernameStatus) {
-        usernameStatus.textContent = '验证用户名中...';
-        usernameStatus.className = 'input-status checking';
-    }
-    
-    try {
-        const checkResult = await cloudSyncManager.checkUsernameAvailability(username);
-        
-        // 检查本地缓存
-        const usersData = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
-        const localExists = usersData.users.includes(username);
-        
-        if (checkResult.exists || localExists) {
-            if (usernameStatus) {
-                usernameStatus.textContent = '该用户名已被占用';
-                usernameStatus.className = 'input-status invalid';
-            }
-            return false;
-        }
-        
-        if (usernameStatus) {
-            usernameStatus.textContent = '用户名可用';
-            usernameStatus.className = 'input-status valid';
-        }
-        return true;
-    } catch (error) {
-        console.error('验证用户名失败:', error);
-        if (usernameStatus) {
-            usernameStatus.textContent = '验证失败，无法检查用户名唯一性';
-            usernameStatus.className = 'input-status invalid';
-        }
-        
-        if (!isRegistration) {
-            // 登录时，网络错误允许继续
-            return true;
-        }
-        
-        throw error;
+        isCloudAvailable = false;
     }
 }
 
 // 更新云端状态显示
 function updateCloudStatus(status, type = 'info') {
-    // 登录界面
+    console.log('更新云端状态:', status, type);
+    
+    // 更新登录界面的状态显示
     const cloudStatusText = document.getElementById('cloud-status-text');
-    if (cloudStatusText) cloudStatusText.textContent = status;
-    
-    const container = document.getElementById('cloud-status-container');
-    if (container) {
-        container.className = 'stat-item';
-        container.classList.toggle('status-success', type === 'success');
-        container.classList.toggle('status-error', type === 'error');
-        container.classList.toggle('status-warning', type === 'warning');
-    }
-    
-    // 主界面
-    const mainStatusText = document.getElementById('cloud-status-text');
-    if (mainStatusText) mainStatusText.textContent = status;
-    
-    const mainContainer = document.getElementById('cloud-status');
-    if (mainContainer) {
-        mainContainer.className = 'cloud-status-indicator';
-        mainContainer.classList.toggle('connected', type === 'success');
-        mainContainer.classList.toggle('disconnected', type === 'error');
-        mainContainer.classList.toggle('warning', type === 'warning');
-    }
-}
-
-// 清空所有本地数据
-function clearAllLocalData() {
-    showConfirmDialog(
-        '清空本地数据',
-        '警告：这将删除所有本地数据，包括用户账户和记录！<br>此操作无法撤销。确定要继续吗？',
-        () => {
-            localStorage.clear();
-            alert('本地数据已清空，页面将刷新');
-            location.reload();
+    if (cloudStatusText) {
+        cloudStatusText.textContent = status;
+        // 根据类型设置颜色
+        const container = document.getElementById('cloud-status-container');
+        if (container) {
+            container.className = 'stat-item';
+            if (type === 'success') container.classList.add('status-success');
+            if (type === 'error') container.classList.add('status-error');
+            if (type === 'warning') container.classList.add('status-warning');
         }
-    );
-}
-
-// 显示确认对话框
-function showConfirmDialog(title, content, confirmCallback, cancelCallback) {
-    document.getElementById('confirm-title').innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${title}`;
-    document.getElementById('confirm-content').innerHTML = content;
-    
-    // 保存回调
-    window.currentConfirmCallback = confirmCallback;
-    window.currentCancelCallback = cancelCallback;
-    
-    document.getElementById('confirm-dialog').classList.remove('hidden');
-}
-
-// 关闭确认对话框
-function closeConfirmDialog() {
-    document.getElementById('confirm-dialog').classList.add('hidden');
-    window.currentConfirmCallback = null;
-    window.currentCancelCallback = null;
-}
-
-// 确认操作
-function confirmAction() {
-    if (window.currentConfirmCallback) {
-        window.currentConfirmCallback();
     }
-    closeConfirmDialog();
-}
-
-// 取消操作
-function cancelConfirmAction() {
-    if (window.currentCancelCallback) {
-        window.currentCancelCallback();
+    
+    // 更新注册界面的状态显示
+    const registerStatusText = document.getElementById('register-cloud-status-text');
+    if (registerStatusText) {
+        registerStatusText.textContent = status;
+        const registerContainer = document.getElementById('register-cloud-status');
+        if (registerContainer) {
+            registerContainer.classList.remove('hidden');
+            registerContainer.className = 'cloud-status-hint';
+            if (type === 'success') registerContainer.classList.add('status-success');
+            if (type === 'error') registerContainer.classList.add('status-error');
+            if (type === 'warning') registerContainer.classList.add('status-warning');
+        }
     }
-    closeConfirmDialog();
+    
+    // 更新主界面的状态显示
+    const mainStatusText = document.getElementById('cloud-status-text');
+    if (mainStatusText) {
+        mainStatusText.textContent = status;
+        const mainContainer = document.getElementById('cloud-status');
+        if (mainContainer) {
+            mainContainer.className = 'cloud-status-indicator';
+            if (type === 'success') mainContainer.classList.add('connected');
+            if (type === 'error') mainContainer.classList.add('disconnected');
+            if (type === 'warning') mainContainer.classList.add('warning');
+        }
+    }
 }
 
 // 初始化
@@ -501,6 +383,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!privacyAgreed) {
         document.getElementById('privacy-agreement').classList.add('active');
     } else {
+        // 隐私协议已同意，继续初始化
         continueInitialization();
     }
     
@@ -508,7 +391,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const noteTextarea = document.getElementById('daily-note');
     if (noteTextarea) {
         noteTextarea.addEventListener('input', function() {
-            document.getElementById('note-chars').textContent = this.value.length;
+            const count = this.value.length;
+            document.getElementById('note-chars').textContent = count;
         });
     }
     
@@ -520,22 +404,31 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 键盘快捷键
     document.addEventListener('keydown', function(event) {
+        // F1 打开帮助
         if (event.key === 'F1') {
             event.preventDefault();
             showHelp();
         }
+        // Ctrl+S 保存数据
         if (event.ctrlKey && event.key === 's') {
             event.preventDefault();
-            if (currentUser) saveData();
+            if (currentUser) {
+                saveData();
+            }
         }
+        // Ctrl+Y 导入昨日数据
         if (event.ctrlKey && event.key === 'y') {
             event.preventDefault();
-            if (currentUser) copyYesterday();
+            if (currentUser) {
+                copyYesterday();
+            }
         }
+        // Ctrl+T 跳转到今天
         if (event.ctrlKey && event.key === 't') {
             event.preventDefault();
             setToday();
         }
+        // 左右箭头切换日期
         if (event.key === 'ArrowLeft') {
             event.preventDefault();
             changeDate(-1);
@@ -545,46 +438,6 @@ document.addEventListener('DOMContentLoaded', function() {
             changeDate(1);
         }
     });
-    
-    // 实时用户名验证
-    const regUsernameInput = document.getElementById('reg-username');
-    if (regUsernameInput) {
-        regUsernameInput.addEventListener('input', function(e) {
-            const username = this.value.trim();
-            const usernameStatus = document.getElementById('username-status');
-            
-            if (usernameStatus) {
-                usernameStatus.textContent = '';
-                usernameStatus.className = 'input-status';
-            }
-            
-            if (username.length < 3 || username.length > 15) {
-                if (usernameStatus) {
-                    usernameStatus.textContent = '用户名需3-15个字符';
-                    usernameStatus.className = 'input-status invalid';
-                }
-                return;
-            }
-            
-            if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-                if (usernameStatus) {
-                    usernameStatus.textContent = '只能包含字母、数字和下划线';
-                    usernameStatus.className = 'input-status invalid';
-                }
-                return;
-            }
-            
-            // 防抖
-            clearTimeout(this.validateTimeout);
-            this.validateTimeout = setTimeout(async () => {
-                try {
-                    await validateUsernameUniqueness(username);
-                } catch (error) {
-                    console.error('实时验证失败:', error);
-                }
-            }, 500);
-        });
-    }
 });
 
 // 隐私协议处理
@@ -622,26 +475,29 @@ function continueInitialization() {
 // 更新用户统计数据
 async function updateUserStats() {
     try {
-        // 本地用户统计
+        // 获取本地用户
         const usersData = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
         const localUserCount = usersData.users.length;
         
-        // 云端用户统计
+        // 获取云端用户（如果配置了）
         let cloudUserCount = 0;
         let activeTodayCount = 0;
         
         if (cloudSyncManager) {
             const result = await cloudSyncManager.getAllUsersData();
-            if (result.success && result.data) {
-                cloudUserCount = Object.keys(result.data.users || {}).length;
+            if (result.success) {
+                cloudUserCount = result.totalUsers || Object.keys(result.data.users || {}).length;
+                // 计算今日活跃用户
                 const today = new Date().toDateString();
-                activeTodayCount = Object.values(result.data.users || {}).filter(user => 
-                    new Date(user.lastLogin || 0).toDateString() === today
-                ).length;
+                const users = result.data.users || {};
+                activeTodayCount = Object.values(users).filter(user => {
+                    const lastLogin = new Date(user.lastLogin || 0).toDateString();
+                    return lastLogin === today;
+                }).length;
             }
         }
         
-        // 更新UI
+        // 更新显示
         document.getElementById('total-users-count').textContent = Math.max(localUserCount, cloudUserCount);
         document.getElementById('synced-users-count').textContent = cloudUserCount;
         document.getElementById('active-today-count').textContent = activeTodayCount;
@@ -660,17 +516,17 @@ function showLogin() {
 
 // 显示注册界面
 function showRegister() {
+    // 云函数不可用时，禁止注册
+    if (!isCloudAvailable) {
+        alert('⚠️ 无法连接云函数，无法验证用户名唯一性，暂时禁止注册！\n请检查网络连接或联系管理员。');
+        return;
+    }
+    
     document.getElementById('login-section').classList.add('hidden');
     document.getElementById('register-section').classList.remove('hidden');
     document.getElementById('main-section').classList.add('hidden');
     
-    // 清空状态
-    const usernameStatus = document.getElementById('username-status');
-    if (usernameStatus) {
-        usernameStatus.textContent = '';
-        usernameStatus.className = 'input-status';
-    }
-    
+    // 更新当前用户数
     updateUserStats();
 }
 
@@ -709,18 +565,15 @@ async function login() {
             throw new Error('密码错误！');
         }
         
-        // 设置当前用户 - 移除不必要的验证
+        // 设置当前用户
         currentUser = username;
         userData = storedData;
-        
-        // 不再调用 validateAndFixUserData 和 ensureUserDataStructure
-        // 这两个函数可能触发用户名冲突检查
         
         // 更新最后登录时间
         userData.lastLogin = new Date().toISOString();
         localStorage.setItem(`pes_user_${currentUser}`, JSON.stringify(userData));
         
-        // 保存登录信息
+        // 保存登录信息到本地存储
         localStorage.setItem('pes_current_user', username);
         
         // 显示用户信息
@@ -741,78 +594,38 @@ async function login() {
         updateSyncStatus();
         // 更新用户统计数据
         updateUserStats();
-        
-        // 检查 syncInfo 是否存在，不存在则初始化
-        if (!userData.syncInfo) {
-            userData.syncInfo = {
-                storageMode: 'local',
-                lastSyncDate: '',
-                syncCountToday: 0
-            };
-        }
-        
-        // 尝试从云端加载用户数据（如果开启了云同步）- 增强错误处理
-        if (userData.syncInfo && userData.syncInfo.storageMode === 'cloud' && cloudSyncManager) {
-            try {
-                const cloudResult = await cloudSyncManager.getUserData(username);
-                if (cloudResult.success && cloudResult.data) {
-                    console.log('从云端加载数据成功');
-                    // 可以在这里实现数据合并逻辑
-                }
-            } catch (error) {
-                // 只记录错误，不阻止登录
-                console.log('从云端加载数据失败，继续使用本地数据:', error.message);
-            }
-        }
     } catch (error) {
         alert('登录失败：' + error.message);
     }
 }
 
-// 检查云端是否有更新
-async function checkForCloudUpdates() {
-    if (!currentUser || !cloudSyncManager) return;
-    
-    try {
-        const cloudResult = await cloudSyncManager.getUserData(currentUser);
-        if (cloudResult.success && cloudResult.data) {
-            // 检查最后更新时间
-            const cloudLastUpdated = new Date(cloudResult.data.lastUpdated || 0);
-            const localLastUpdated = new Date(userData.lastUpdated || 0);
-            
-            if (cloudLastUpdated > localLastUpdated) {
-                document.getElementById('data-source-cloud').classList.remove('hidden');
-                document.getElementById('data-source-local').classList.add('hidden');
-            }
-        }
-    } catch (error) {
-        console.log('检查云端更新失败:', error.message);
-    }
-}
-
 // 用户注册
 async function register() {
+    // 严格检查云函数是否可用
+    if (!isCloudAvailable || !cloudSyncManager) {
+        alert('⚠️ 云函数连接不可用，无法验证用户名唯一性，禁止注册！\n请检查网络连接或联系管理员。');
+        return;
+    }
+    
     const username = document.getElementById('reg-username').value.trim();
     const password = document.getElementById('reg-password').value.trim();
     const confirm = document.getElementById('reg-confirm').value.trim();
+    const storageMode = document.querySelector('input[name="storage"]:checked').value;
     
     if (!username || !password || !confirm) {
         alert('请填写所有字段！');
         return;
     }
     
-    // 用户名格式验证
+    // 用户名验证
     if (!/^[a-zA-Z0-9_]{3,15}$/.test(username)) {
         alert('用户名需3-15个字符，只能包含字母、数字和下划线！');
         return;
     }
-    
-    // 密码验证
     if (password !== confirm) {
         alert('两次输入的密码不一致！');
         return;
     }
-    
     if (!/^\d{6}$/.test(password)) {
         alert('密码必须是6位数字！');
         return;
@@ -821,64 +634,55 @@ async function register() {
     // 显示加载状态
     const registerBtn = document.querySelector('#register-section button');
     const originalBtnText = registerBtn.innerHTML;
-    registerBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 注册中...';
+    registerBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 验证用户名...';
     registerBtn.disabled = true;
     
     try {
-        // 验证用户名唯一性
-        const isUnique = await validateUsernameUniqueness(username, true);
-        if (!isUnique) {
-            throw new Error('该用户名已被占用，请尝试其他名称');
+        // 严格验证用户名唯一性
+        const checkResult = await cloudSyncManager.checkUsernameAvailability(username);
+        
+        if (!checkResult.available) {
+            throw new Error('该用户名已被注册，请选择其他名称');
         }
         
-        // 检查用户数量限制
+        // 检查用户是否已存在（本地）
         const usersData = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
+        if (usersData.users.includes(username)) {
+            throw new Error('本设备上已存在该用户名');
+        }
+        
         if (usersData.users.length >= CONFIG.MAX_USERS) {
             throw new Error(`用户数量已达上限 ${CONFIG.MAX_USERS} 人！`);
         }
         
-        // 创建新用户
-        const userId = generateUniqueUserId();
+        // 创建新用户数据
         const userRecord = {
-            userId: userId,
             username: username,
             password: password,
             createdAt: new Date().toISOString(),
             lastLogin: new Date().toISOString(),
             syncInfo: {
+                storageMode: storageMode,
                 lastSyncDate: '',
-                syncCountToday: 0,
-                lastUploadTime: '',
-                lastDownloadTime: ''
+                syncCountToday: 0
             },
-            records: {},
-            version: '2.1'
+            records: {}
         };
         
-        // 保存到本地
+        // 保存用户数据到localStorage
         localStorage.setItem(`pes_user_${username}`, JSON.stringify(userRecord));
         
         // 更新用户列表
         usersData.users.push(username);
+        usersData.lastUpdated = new Date().toISOString();
         localStorage.setItem('pes_users', JSON.stringify(usersData));
-        
-        // 注册到云端
-        const registerResult = await cloudSyncManager.registerUsername(username, userRecord);
-        if (!registerResult.success) {
-            throw new Error(registerResult.message || '云端注册失败');
-        }
-        
-        // 更新缓存
-        usernameCache.users.push(username);
-        usernameCache.lastUpdated = new Date().toISOString();
-        localStorage.setItem('pes_username_cache', JSON.stringify(usernameCache));
         
         alert('注册成功！请登录。');
         showLogin();
         document.getElementById('username').value = username;
         document.getElementById('password').value = password;
         
-        // 更新统计
+        // 更新用户统计数据
         updateUserStats();
     } catch (error) {
         alert('注册失败：' + error.message);
@@ -887,14 +691,6 @@ async function register() {
         registerBtn.innerHTML = originalBtnText;
         registerBtn.disabled = false;
     }
-}
-
-// 生成唯一用户ID
-function generateUniqueUserId() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-        const r = Math.random() * 16 | 0;
-        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-    });
 }
 
 // 退出登录
@@ -908,18 +704,98 @@ function logout() {
         syncInfo: {
             lastSyncDate: '',
             syncCountToday: 0,
-            lastUploadTime: '',
-            lastDownloadTime: ''
+            storageMode: 'local'
         },
         records: {}
     };
     localStorage.removeItem('pes_current_user');
     showLogin();
+    // 更新用户统计数据
     updateUserStats();
 }
 
-// 保存数据到本地
-function saveData() {
+// 获取昨日数据
+function getYesterdayData(todayDate) {
+    const today = new Date(todayDate);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    
+    // 查找昨天的记录
+    if (userData.records && userData.records[yesterdayStr]) {
+        return userData.records[yesterdayStr];
+    }
+    
+    // 如果没有昨天的记录，返回空数据
+    return {
+        gold: 0,
+        heart_points: 0,
+        highlight_coupons: 0,
+        new_highlight: 0,
+        return_highlight: 0,
+        exit_highlight: 0,
+        highlight_coins: 0
+    };
+}
+
+// 计算每日盈亏
+function calculateDailyProfitLoss(date) {
+    const todayData = userData.records[date];
+    if (!todayData) return null;
+    
+    const yesterday = new Date(date);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    
+    const yesterdayData = userData.records[yesterdayStr] || {
+        gold: 0,
+        heart_points: 0,
+        highlight_coupons: 0,
+        new_highlight: 0,
+        return_highlight: 0,
+        exit_highlight: 0,
+        highlight_coins: 0
+    };
+    
+    return {
+        gold: todayData.gold - yesterdayData.gold,
+        heart_points: todayData.heart_points - yesterdayData.heart_points,
+        highlight_coupons: todayData.highlight_coupons - yesterdayData.highlight_coupons,
+        new_highlight: todayData.new_highlight - yesterdayData.new_highlight,
+        return_highlight: todayData.return_highlight - yesterdayData.return_highlight,
+        exit_highlight: todayData.exit_highlight - yesterdayData.exit_highlight,
+        highlight_coins: todayData.highlight_coins - yesterdayData.highlight_coins
+    };
+}
+
+// 加载指定日期的数据
+function loadDateData() {
+    const date = document.getElementById('current-date').value;
+    currentDate = date;
+    
+    // 查找当天的记录
+    if (userData.records && userData.records[date]) {
+        const record = userData.records[date];
+        document.getElementById('gold').value = record.gold || 0;
+        document.getElementById('heart-points').value = record.heart_points || 0;
+        document.getElementById('highlight-coupons').value = record.highlight_coupons || 0;
+        document.getElementById('new-highlight').value = record.new_highlight || 0;
+        document.getElementById('return-highlight').value = record.return_highlight || 0;
+        document.getElementById('exit-highlight').value = record.exit_highlight || 0;
+        document.getElementById('highlight-coins').value = record.highlight_coins || 0;
+        document.getElementById('daily-note').value = record.note || '';
+        document.getElementById('note-chars').textContent = (record.note || '').length;
+    } else {
+        // 没有记录，清空表单
+        resetForm();
+    }
+    
+    // 更新日历显示
+    generateCalendar();
+}
+
+// 保存数据
+async function saveData() {
     if (!currentUser) {
         alert('请先登录！');
         return;
@@ -936,15 +812,20 @@ function saveData() {
         exit_highlight: parseInt(document.getElementById('exit-highlight').value) || 0,
         highlight_coins: parseInt(document.getElementById('highlight-coins').value) || 0,
         note: note,
-        updatedAt: new Date().toISOString(),
-        createdAt: (userData.records?.[date]?.createdAt) || new Date().toISOString()
+        updatedAt: new Date().toISOString()
     };
+    
+    // 如果是新记录，添加创建时间
+    if (!userData.records || !userData.records[date]) {
+        record.createdAt = new Date().toISOString();
+    } else {
+        record.createdAt = userData.records[date].createdAt || new Date().toISOString();
+    }
     
     // 验证数据
     const yesterdayData = getYesterdayData(date);
     let hasWarning = false;
     let warningMessage = '警告：以下资源总量小于昨日：\n';
-    
     const resourceNames = {
         gold: '金币',
         heart_points: '心仪积分',
@@ -967,50 +848,25 @@ function saveData() {
         return;
     }
     
-    // 保存数据
-    if (!userData.records) userData.records = {};
+    // 保存到用户数据
+    if (!userData.records) {
+        userData.records = {};
+    }
     userData.records[date] = record;
-    userData.lastUpdated = new Date().toISOString();
     
-    // 保存到本地存储
+    // 保存到localStorage
     localStorage.setItem(`pes_user_${currentUser}`, JSON.stringify(userData));
     
-    // 更新数据源指示器
-    document.getElementById('data-source-local').classList.remove('hidden');
-    document.getElementById('data-source-cloud').classList.add('hidden');
+    // 更新数据来源标识
+    updateDataSourceIndicator('local');
     
-    // 更新UI
+    // 更新统计
     updateStats();
+    
+    // 更新日历显示
     generateCalendar();
     
-    const notePreview = note ? `\n备注："${note.substring(0, 30)}${note.length > 30 ? '...' : ''}"` : '';
-    alert('数据已保存到本地！' + notePreview);
-    
-    // 检查云端是否有更新
-    checkForCloudUpdates();
-}
-
-// 加载指定日期的数据
-function loadDateData() {
-    const date = document.getElementById('current-date').value;
-    currentDate = date;
-    
-    if (userData.records && userData.records[date]) {
-        const record = userData.records[date];
-        document.getElementById('gold').value = record.gold || 0;
-        document.getElementById('heart-points').value = record.heart_points || 0;
-        document.getElementById('highlight-coupons').value = record.highlight_coupons || 0;
-        document.getElementById('new-highlight').value = record.new_highlight || 0;
-        document.getElementById('return-highlight').value = record.return_highlight || 0;
-        document.getElementById('exit-highlight').value = record.exit_highlight || 0;
-        document.getElementById('highlight-coins').value = record.highlight_coins || 0;
-        document.getElementById('daily-note').value = record.note || '';
-        document.getElementById('note-chars').textContent = (record.note || '').length;
-    } else {
-        resetForm();
-    }
-    
-    generateCalendar();
+    alert('数据保存成功！' + (note ? `\n备注："${note.substring(0, 30)}${note.length > 30 ? '...' : ''}"` : ''));
 }
 
 // 重置表单
@@ -1026,58 +882,6 @@ function resetForm() {
     document.getElementById('note-chars').textContent = 0;
 }
 
-// 获取昨日数据
-function getYesterdayData(todayDate) {
-    const today = new Date(todayDate);
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
-    
-    if (userData.records && userData.records[yesterdayStr]) {
-        return userData.records[yesterdayStr];
-    }
-    
-    return {
-        gold: 0,
-        heart_points: 0,
-        highlight_coupons: 0,
-        new_highlight: 0,
-        return_highlight: 0,
-        exit_highlight: 0,
-        highlight_coins: 0
-    };
-}
-
-// 计算每日盈亏
-function calculateDailyProfitLoss(date) {
-    const todayData = userData.records?.[date];
-    if (!todayData) return null;
-    
-    const yesterday = new Date(date);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
-    
-    const yesterdayData = userData.records?.[yesterdayStr] || {
-        gold: 0,
-        heart_points: 0,
-        highlight_coupons: 0,
-        new_highlight: 0,
-        return_highlight: 0,
-        exit_highlight: 0,
-        highlight_coins: 0
-    };
-    
-    return {
-        gold: todayData.gold - yesterdayData.gold,
-        heart_points: todayData.heart_points - yesterdayData.heart_points,
-        highlight_coupons: todayData.highlight_coupons - yesterdayData.highlight_coupons,
-        new_highlight: todayData.new_highlight - yesterdayData.new_highlight,
-        return_highlight: todayData.return_highlight - yesterdayData.return_highlight,
-        exit_highlight: todayData.exit_highlight - yesterdayData.exit_highlight,
-        highlight_coins: todayData.highlight_coins - yesterdayData.highlight_coins
-    };
-}
-
 // 复制昨日数据
 async function copyYesterday() {
     const today = new Date(currentDate);
@@ -1085,6 +889,7 @@ async function copyYesterday() {
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = yesterday.toISOString().split('T')[0];
     
+    // 查找昨天的记录
     if (userData.records && userData.records[yesterdayStr]) {
         const yesterdayRecord = userData.records[yesterdayStr];
         document.getElementById('gold').value = yesterdayRecord.gold || 0;
@@ -1125,8 +930,7 @@ function generateCalendar() {
     const calendarEl = document.getElementById('calendar');
     const summaryEl = document.getElementById('calendar-summary');
     
-    if (!calendarEl || !summaryEl) return;
-    
+    // 清空日历
     calendarEl.innerHTML = '';
     summaryEl.innerHTML = '';
     
@@ -1135,14 +939,19 @@ function generateCalendar() {
     const year = current.getFullYear();
     const month = current.getMonth();
     
+    // 获取月份的第一天和最后一天
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
+    
+    // 计算第一天是星期几（0=周日，1=周一，...）
     const firstDayOfWeek = firstDay.getDay();
     
-    const monthNames = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
-    const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+    // 生成日历标题
+    const monthNames = ['一月', '二月', '三月', '四月', '五月', '六月',
+                        '七月', '八月', '九月', '十月', '十一月', '十二月'];
     
     // 添加星期标题
+    const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
     for (let i = 0; i < 7; i++) {
         const weekdayEl = document.createElement('div');
         weekdayEl.className = 'calendar-day weekday';
@@ -1181,9 +990,9 @@ function generateCalendar() {
         // 检查是否有数据
         if (userData.records && userData.records[date]) {
             dayEl.classList.add('has-data');
-            const record = userData.records[date];
             
             // 检查是否有备注
+            const record = userData.records[date];
             if (record.note && record.note.trim()) {
                 const noteIndicator = document.createElement('div');
                 noteIndicator.className = 'note-indicator';
@@ -1195,33 +1004,51 @@ function generateCalendar() {
             // 计算当日盈亏
             const profitLoss = calculateDailyProfitLoss(date);
             if (profitLoss) {
+                // 计算盈亏
+                const goldChange = profitLoss.gold || 0;
+                const heartChange = profitLoss.heart_points || 0;
+                const couponsChange = profitLoss.highlight_coupons || 0;
+                const coinsChange = profitLoss.highlight_coins || 0;
+                const newHighlightChange = profitLoss.new_highlight || 0;
+                const returnHighlightChange = profitLoss.return_highlight || 0;
+                const exitHighlightChange = profitLoss.exit_highlight || 0;
+                
                 // 累加到本月总盈亏
-                totalGoldChange += profitLoss.gold || 0;
-                totalHeartChange += profitLoss.heart_points || 0;
-                totalCouponsChange += profitLoss.highlight_coupons || 0;
-                totalCoinsChange += profitLoss.highlight_coins || 0;
-                totalNewHighlightChange += profitLoss.new_highlight || 0;
-                totalReturnHighlightChange += profitLoss.return_highlight || 0;
-                totalExitHighlightChange += profitLoss.exit_highlight || 0;
+                totalGoldChange += goldChange;
+                totalHeartChange += heartChange;
+                totalCouponsChange += couponsChange;
+                totalCoinsChange += coinsChange;
+                totalNewHighlightChange += newHighlightChange;
+                totalReturnHighlightChange += returnHighlightChange;
+                totalExitHighlightChange += exitHighlightChange;
                 hasDataDays++;
                 
-                // 添加数据提示
+                // 添加数据提示（显示金币盈亏）
                 const dataEl = document.createElement('div');
                 dataEl.className = 'day-data';
-                const goldChange = profitLoss.gold || 0;
-                const goldClass = goldChange > 0 ? 'profit' : goldChange < 0 ? 'loss' : '';
-                dataEl.innerHTML = `<span class="${goldClass}">💰${goldChange >= 0 ? '+' : ''}${goldChange}</span>`;
+                let goldSymbol = '';
+                let goldClass = '';
+                if (goldChange > 0) {
+                    goldSymbol = `+${goldChange}`;
+                    goldClass = 'profit';
+                } else if (goldChange < 0) {
+                    goldSymbol = `${goldChange}`;
+                    goldClass = 'loss';
+                } else {
+                    goldSymbol = `0`;
+                }
+                dataEl.innerHTML = `<span class="${goldClass}">💰${goldSymbol}</span>`;
                 dayEl.appendChild(dataEl);
                 
                 // 添加详情提示
                 const detailText = `日期: ${date}\n` +
-                    `金币: ${goldChange >= 0 ? '+' : ''}${goldChange}\n` +
-                    `心仪积分: ${profitLoss.heart_points >= 0 ? '+' : ''}${profitLoss.heart_points}\n` +
-                    `高光券: ${profitLoss.highlight_coupons >= 0 ? '+' : ''}${profitLoss.highlight_coupons}\n` +
-                    `新高光: ${profitLoss.new_highlight >= 0 ? '+' : ''}${profitLoss.new_highlight}\n` +
-                    `返场高光: ${profitLoss.return_highlight >= 0 ? '+' : ''}${profitLoss.return_highlight}\n` +
-                    `退场高光: ${profitLoss.exit_highlight >= 0 ? '+' : ''}${profitLoss.exit_highlight}\n` +
-                    `高光币: ${profitLoss.highlight_coins >= 0 ? '+' : ''}${profitLoss.highlight_coins}` +
+                    `金币: ${goldSymbol}\n` +
+                    `心仪积分: ${heartChange >= 0 ? '+' : ''}${heartChange}\n` +
+                    `高光券: ${couponsChange >= 0 ? '+' : ''}${couponsChange}\n` +
+                    `新高光: ${newHighlightChange >= 0 ? '+' : ''}${newHighlightChange}\n` +
+                    `返场高光: ${returnHighlightChange >= 0 ? '+' : ''}${returnHighlightChange}\n` +
+                    `退场高光: ${exitHighlightChange >= 0 ? '+' : ''}${exitHighlightChange}\n` +
+                    `高光币: ${coinsChange >= 0 ? '+' : ''}${coinsChange}` +
                     (record.note ? `\n备注: ${record.note}` : '');
                 dayEl.title = detailText;
             }
@@ -1232,7 +1059,7 @@ function generateCalendar() {
         dayNumberEl.textContent = day;
         dayEl.appendChild(dayNumberEl);
         
-        // 点击日期跳转
+        // 点击日期跳转到该日期
         dayEl.onclick = function() {
             document.getElementById('current-date').value = date;
             currentDate = date;
@@ -1258,15 +1085,23 @@ function generateCalendar() {
 
 // 更新统计数据
 function updateStats() {
-    if (!userData.records) userData.records = {};
+    if (!userData.records) {
+        userData.records = {};
+    }
     
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
     const currentMonth = today.getMonth();
     const currentYear = today.getFullYear();
     
-    let todayGold = 0, todayHeart = 0, todayCoupons = 0, todayCoins = 0;
-    let todayNewHighlight = 0, todayReturnHighlight = 0, todayExitHighlight = 0;
+    // 获取今日数据
+    let todayGold = 0;
+    let todayHeart = 0;
+    let todayCoupons = 0;
+    let todayCoins = 0;
+    let todayNewHighlight = 0;
+    let todayReturnHighlight = 0;
+    let todayExitHighlight = 0;
     
     if (userData.records[todayStr]) {
         const todayRecord = userData.records[todayStr];
@@ -1279,8 +1114,14 @@ function updateStats() {
         todayExitHighlight = todayRecord.exit_highlight || 0;
     }
     
-    let monthGoldChange = 0, monthHeartChange = 0, monthCouponsChange = 0, monthCoinsChange = 0;
-    let monthNewHighlightChange = 0, monthReturnHighlightChange = 0, monthExitHighlightChange = 0;
+    // 计算本月盈亏
+    let monthGoldChange = 0;
+    let monthHeartChange = 0;
+    let monthCouponsChange = 0;
+    let monthCoinsChange = 0;
+    let monthNewHighlightChange = 0;
+    let monthReturnHighlightChange = 0;
+    let monthExitHighlightChange = 0;
     
     for (const [date, record] of Object.entries(userData.records)) {
         const recordDate = new Date(date);
@@ -1298,6 +1139,7 @@ function updateStats() {
         }
     }
     
+    // 更新统计显示
     updateStatCard('total-gold', todayGold, monthGoldChange);
     updateStatCard('total-heart', todayHeart, monthHeartChange);
     updateStatCard('total-coupons', todayCoupons, monthCouponsChange);
@@ -1307,6 +1149,7 @@ function updateStats() {
     updateStatCard('total-exit-highlight', todayExitHighlight, monthExitHighlightChange);
 }
 
+// 更新统计卡片
 function updateStatCard(elementId, todayValue, monthChange) {
     const element = document.getElementById(elementId);
     if (!element) return;
@@ -1328,8 +1171,8 @@ function updateStatCard(elementId, todayValue, monthChange) {
     }
 }
 
-// 上传数据到云端
-async function uploadToCloud() {
+// 同步到云端
+async function syncToCloud() {
     if (!currentUser) {
         alert('请先登录！');
         return;
@@ -1340,199 +1183,157 @@ async function uploadToCloud() {
         return;
     }
     
-    // 检查上传限制
+    // 严格检查云函数是否可用
+    if (!isCloudAvailable) {
+        alert('⚠️ 云函数连接不可用，无法同步数据！\n请检查网络连接或联系管理员。');
+        return;
+    }
+    
+    // 检查存储模式
+    if (userData.syncInfo.storageMode !== 'cloud') {
+        if (!confirm('您当前是本地存储模式，切换到云端同步模式吗？\n切换后数据将上传到云端。')) {
+            return;
+        }
+        userData.syncInfo.storageMode = 'cloud';
+        localStorage.setItem(`pes_user_${currentUser}`, JSON.stringify(userData));
+    }
+    
+    // 检查同步限制
     const syncInfo = userData.syncInfo || {};
     const today = new Date().toDateString();
     
-    if (syncInfo.lastUploadTime && new Date(syncInfo.lastUploadTime).toDateString() === today) {
-        if (confirm(`您今天已经上传过数据，确定要覆盖上传最新数据吗？\n注意：这将覆盖云端现有数据！`)) {
-            performUpload();
-        }
-    } else {
-        performUpload();
-    }
-}
-
-async function performUpload() {
-    const confirmMsg = `⚠️ 确认上传数据到云端
-${CONFIG.PRIVACY_WARNING}
-上传后，您的数据将存储在管理员GitHub中，管理员可以查看这些数据。
-确定要上传吗？`;
-    
-    if (!confirm(confirmMsg)) {
+    if (syncInfo.lastSyncDate === today && syncInfo.syncCountToday >= CONFIG.SYNC_LIMIT_PER_DAY) {
+        alert(`今天已经同步过 ${CONFIG.SYNC_LIMIT_PER_DAY} 次了，请明天再试！`);
         return;
     }
     
-    const uploadBtn = document.getElementById('upload-button');
-    const originalText = uploadBtn.innerHTML;
-    uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 上传中...';
-    uploadBtn.disabled = true;
+    // 确认同步
+    if (!confirm(`⚠️ 数据将同步到云端\n${CONFIG.PRIVACY_WARNING}\n确定要同步吗？`)) {
+        return;
+    }
+    
+    // 显示加载状态
+    const syncBtn = document.getElementById('sync-button');
+    const originalText = syncBtn.innerHTML;
+    const originalDisabled = syncBtn.disabled;
+    syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 同步中...';
+    syncBtn.disabled = true;
     
     try {
-        // 准备上传数据
-        const uploadData = {
+        // 准备要同步的数据
+        const syncData = {
             ...userData,
-            lastUploadTime: new Date().toISOString(),
-            version: '2.1'
+            lastSync: new Date().toISOString()
         };
         
-        const result = await cloudSyncManager.updateUserToCloud(currentUser, uploadData);
+        // 调用云函数API
+        const result = await cloudSyncManager.updateUserData(currentUser, syncData);
         
         if (result.success) {
             // 更新本地同步信息
-            if (!userData.syncInfo) userData.syncInfo = {};
-            userData.syncInfo.lastUploadTime = new Date().toISOString();
-            userData.lastUpdated = new Date().toISOString();
-            localStorage.setItem(`pes_user_${currentUser}`, JSON.stringify(userData));
-            
-            // 更新UI
-            document.getElementById('data-source-local').classList.add('hidden');
-            document.getElementById('data-source-cloud').classList.remove('hidden');
-            
-            alert(`✅ 上传成功！
-• 数据已上传到云端
-• 最后上传时间: ${new Date().toLocaleString('zh-CN')}`);
-            
-            // 更新用户统计
-            updateUserStats();
-        } else {
-            throw new Error(result.message || '上传失败');
-        }
-    } catch (error) {
-        console.error('上传失败:', error);
-        alert(`❌ 上传失败: ${error.message}\n数据已保存在本地，请稍后重试。`);
-    } finally {
-        uploadBtn.innerHTML = originalText;
-        uploadBtn.disabled = false;
-    }
-}
-
-// 从云端下载数据
-async function downloadFromCloud() {
-    if (!currentUser) {
-        alert('请先登录！');
-        return;
-    }
-    
-    if (!cloudSyncManager) {
-        alert('云同步功能未配置，请联系管理员！');
-        return;
-    }
-    
-    if (!confirm('⚠️ 从云端下载数据\n这将用云端数据覆盖本地所有记录！\n确定要下载吗？')) {
-        return;
-    }
-    
-    const downloadEl = document.querySelector('.btn-download');
-    const originalText = downloadEl.innerHTML;
-    downloadEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 下载中...';
-    downloadEl.disabled = true;
-    
-    try {
-        const result = await cloudSyncManager.downloadUserFromCloud(currentUser);
-        
-        if (result.success && result.data) {
-            // 备份当前本地数据
-            const backupData = JSON.parse(JSON.stringify(userData));
-            localStorage.setItem(`pes_user_${currentUser}_backup`, JSON.stringify(backupData));
-            
-            // 应用云端数据
-            userData = {
-                ...userData, // 保留密码等本地信息
-                records: result.data.records || {},
-                syncInfo: {
-                    ...userData.syncInfo,
-                    lastDownloadTime: new Date().toISOString()
-                },
-                lastUpdated: result.lastUpdated || new Date().toISOString(),
-                version: '2.1'
-            };
+            if (!userData.syncInfo) {
+                userData.syncInfo = {};
+            }
+            if (syncInfo.lastSyncDate !== today) {
+                userData.syncInfo.syncCountToday = 1;
+            } else {
+                userData.syncInfo.syncCountToday = (syncInfo.syncCountToday || 0) + 1;
+            }
+            userData.syncInfo.lastSyncDate = today;
+            userData.syncInfo.lastSyncTime = new Date().toISOString();
             
             // 保存到本地
             localStorage.setItem(`pes_user_${currentUser}`, JSON.stringify(userData));
             
-            // 更新UI
-            document.getElementById('data-source-local').classList.add('hidden');
-            document.getElementById('data-source-cloud').classList.remove('hidden');
-            loadDateData();
-            updateStats();
-            generateCalendar();
+            // 更新界面
+            updateSyncStatus();
+            updateDataSourceIndicator('synced');
             
-            alert(`✅ 下载成功！
-• 云端数据已覆盖本地数据
-• 最后下载时间: ${new Date().toLocaleString('zh-CN')}
-• 原始数据已备份，如需恢复请导入备份文件`);
+            alert(`✅ 同步成功！\n• 总用户数: ${result.userCount}/${CONFIG.MAX_USERS}\n• 今日剩余同步次数: ${CONFIG.SYNC_LIMIT_PER_DAY - userData.syncInfo.syncCountToday}\n数据已安全存储在云端！`);
+            
+            // 更新用户统计数据
+            updateUserStats();
         } else {
-            throw new Error(result.message || '下载失败');
+            throw new Error(result.error);
         }
     } catch (error) {
-        console.error('下载失败:', error);
-        alert(`❌ 下载失败: ${error.message}\n请检查网络连接后重试。`);
+        console.error('同步失败:', error);
+        alert(`❌ 同步失败: ${error.message}\n数据已保存在本地，请稍后重试。`);
+        updateDataSourceIndicator('local');
     } finally {
-        downloadEl.innerHTML = originalText;
-        downloadEl.disabled = false;
+        // 恢复按钮状态
+        syncBtn.innerHTML = originalText;
+        syncBtn.disabled = originalDisabled;
     }
 }
 
-// 导出数据
+// 更新同步状态显示
+function updateSyncStatus() {
+    if (!currentUser) return;
+    
+    const syncInfo = userData.syncInfo || {};
+    const today = new Date().toDateString();
+    
+    const syncCountElement = document.getElementById('sync-count');
+    const syncStatusElement = document.getElementById('sync-status');
+    
+    if (syncCountElement) {
+        syncCountElement.textContent = syncInfo.syncCountToday || 0;
+    }
+    
+    if (syncStatusElement) {
+        if (syncInfo.lastSyncDate === today && syncInfo.syncCountToday >= CONFIG.SYNC_LIMIT_PER_DAY) {
+            syncStatusElement.className = 'sync-status limit-reached';
+            syncStatusElement.title = '今日同步次数已用完';
+        } else {
+            syncStatusElement.className = 'sync-status';
+            syncStatusElement.title = `今日已同步: ${syncInfo.syncCountToday || 0}/${CONFIG.SYNC_LIMIT_PER_DAY}`;
+        }
+    }
+}
+
+// 更新数据来源指示器
+function updateDataSourceIndicator(source) {
+    document.getElementById('data-source-local').classList.add('hidden');
+    document.getElementById('data-source-synced').classList.add('hidden');
+    document.getElementById('data-source-outdated').classList.add('hidden');
+    
+    if (source === 'local') {
+        document.getElementById('data-source-local').classList.remove('hidden');
+    } else if (source === 'synced') {
+        document.getElementById('data-source-synced').classList.remove('hidden');
+    } else if (source === 'outdated') {
+        document.getElementById('data-source-outdated').classList.remove('hidden');
+    }
+}
+
+// 导出数据（用于备份）
 function exportData() {
     if (!currentUser) {
         alert('请先登录！');
         return;
     }
     
-    const exportType = confirm('选择导出类型：\n确定 - 仅导出当前用户数据\n取消 - 导出所有用户数据');
+    const dataStr = JSON.stringify(userData, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+    const exportFileDefaultName = `pes_data_${currentUser}_${currentDate}.json`;
     
-    if (exportType) {
-        // 导出当前用户数据
-        const dataStr = JSON.stringify(userData, null, 2);
-        const dataUri = 'application/json;charset=utf-8,' + encodeURIComponent(dataStr);
-        const exportFileDefaultName = `pes_data_${currentUser}_${new Date().toISOString().split('T')[0]}.json`;
-        
-        const linkElement = document.createElement('a');
-        linkElement.setAttribute('href', dataUri);
-        linkElement.setAttribute('download', exportFileDefaultName);
-        linkElement.click();
-        
-        alert('当前用户数据导出成功！');
-    } else {
-        // 导出所有用户数据
-        const allUsersData = {};
-        const usersData = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
-        
-        for (const username of usersData.users) {
-            const userDataStr = localStorage.getItem(`pes_user_${username}`);
-            if (userDataStr) {
-                allUsersData[username] = JSON.parse(userDataStr);
-            }
-        }
-        
-        if (Object.keys(allUsersData).length === 0) {
-            alert('没有可导出的用户数据');
-            return;
-        }
-        
-        const dataStr = JSON.stringify({
-            version: '2.1',
-            exportDate: new Date().toISOString(),
-            users: allUsersData
-        }, null, 2);
-        
-        const dataUri = 'application/json;charset=utf-8,' + encodeURIComponent(dataStr);
-        const exportFileDefaultName = `pes_all_users_${new Date().toISOString().split('T')[0]}.json`;
-        
-        const linkElement = document.createElement('a');
-        linkElement.setAttribute('href', dataUri);
-        linkElement.setAttribute('download', exportFileDefaultName);
-        linkElement.click();
-        
-        alert(`所有用户数据导出成功！共 ${Object.keys(allUsersData).length} 个用户`);
-    }
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.click();
+    
+    alert('数据导出成功！文件名：' + exportFileDefaultName);
 }
 
-// 导入数据
+// 导入数据（从备份恢复）
 function importData() {
-    if (!confirm('⚠️ 从文件恢复数据\n这将用导入的数据覆盖当前本地数据！\n确定要导入吗？')) {
+    if (!currentUser) {
+        alert('请先登录！');
+        return;
+    }
+    
+    if (!confirm('警告：导入数据会覆盖当前所有记录！\n请确认：\n1. 您已经备份了当前数据\n2. 导入的是正确的备份文件\n确定要继续吗？')) {
         return;
     }
     
@@ -1549,100 +1350,55 @@ function importData() {
             try {
                 const importedData = JSON.parse(e.target.result);
                 
-                if (importedData.users && typeof importedData.users === 'object') {
-                    // 导入所有用户数据
-                    showConfirmDialog(
-                        '导入所有用户数据',
-                        `检测到包含 ${Object.keys(importedData.users).length} 个用户的完整备份文件<br>这将覆盖当前所有用户数据，确定要继续吗？`,
-                        () => {
-                            importAllUsersData(importedData.users);
-                        }
-                    );
-                } else if (importedData.username) {
-                    // 导入单个用户数据
-                    if (currentUser && importedData.username !== currentUser) {
-                        showConfirmDialog(
-                            '用户名不匹配',
-                            `备份文件用户名: ${importedData.username}<br>当前登录用户: ${currentUser}<br>确定要强制导入吗？这将覆盖当前用户数据`,
-                            () => {
-                                importSingleUserData(importedData);
-                            }
-                        );
-                    } else {
-                        importSingleUserData(importedData);
-                    }
-                } else {
+                // 验证数据格式
+                if (!importedData.username || !importedData.records) {
                     throw new Error('文件格式错误：不是有效的备份文件');
                 }
+                
+                // 验证用户名匹配
+                if (importedData.username !== currentUser) {
+                    if (!confirm(`备份文件用户名为：${importedData.username}\n当前登录用户为：${currentUser}\n用户名不匹配！确定要强制导入吗？`)) {
+                        return;
+                    }
+                }
+                
+                // 显示导入详情
+                const recordCount = Object.keys(importedData.records || {}).length;
+                const dates = Object.keys(importedData.records || {}).sort();
+                const firstDate = dates[0] || '无';
+                const lastDate = dates[dates.length - 1] || '无';
+                
+                const confirmMsg = `即将导入：\n` +
+                    `• 用户：${importedData.username}\n` +
+                    `• 记录数：${recordCount} 条\n` +
+                    `• 时间范围：${firstDate} 至 ${lastDate}\n` +
+                    `导入后将完全替换当前数据，无法撤销！\n确定要导入吗？`;
+                
+                if (confirm(confirmMsg)) {
+                    userData = importedData;
+                    localStorage.setItem(`pes_user_${currentUser}`, JSON.stringify(userData));
+                    
+                    alert(`数据导入成功！\n已导入 ${recordCount} 条记录。`);
+                    
+                    // 刷新界面
+                    loadDateData();
+                    updateStats();
+                    generateCalendar();
+                    updateSyncStatus();
+                    
+                    // 显示导入完成提示
+                    setTimeout(() => {
+                        alert('导入完成！建议您立即导出一次数据作为备份。');
+                    }, 500);
+                }
             } catch (error) {
-                alert('导入失败：' + error.message);
+                alert('导入失败：' + error.message + '\n请确保选择的是正确的JSON备份文件。');
             }
         };
         reader.readAsText(file);
     };
     
     input.click();
-}
-
-function importSingleUserData(importedData) {
-    if (!currentUser) {
-        alert('请先登录再导入数据');
-        return;
-    }
-    
-    // 保留密码
-    const currentPassword = userData.password;
-    
-    // 合并数据
-    userData = {
-        ...importedData,
-        password: currentPassword, // 保留当前密码
-        lastLogin: new Date().toISOString(),
-        version: '2.1'
-    };
-    
-    localStorage.setItem(`pes_user_${currentUser}`, JSON.stringify(userData));
-    
-    loadDateData();
-    updateStats();
-    generateCalendar();
-    
-    alert('数据导入成功！');
-}
-
-function importAllUsersData(usersData) {
-    // 备份当前所有数据
-    const usersBackup = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
-    localStorage.setItem('pes_users_backup', JSON.stringify(usersBackup));
-    
-    // 导入用户列表
-    const newUsersList = { users: Object.keys(usersData) };
-    localStorage.setItem('pes_users', JSON.stringify(newUsersList));
-    
-    // 导入用户数据
-    for (const [username, userData] of Object.entries(usersData)) {
-        localStorage.setItem(`pes_user_${username}`, JSON.stringify(userData));
-    }
-    
-    // 更新用户名缓存
-    usernameCache.users = newUsersList.users;
-    usernameCache.lastUpdated = new Date().toISOString();
-    localStorage.setItem('pes_username_cache', JSON.stringify(usernameCache));
-    
-    alert(`所有用户数据导入成功！共 ${newUsersList.users.length} 个用户`);
-    
-    // 如果当前有登录用户，重新加载
-    if (currentUser && newUsersList.users.includes(currentUser)) {
-        const userDataStr = localStorage.getItem(`pes_user_${currentUser}`);
-        if (userDataStr) {
-            userData = JSON.parse(userDataStr);
-            loadDateData();
-            updateStats();
-            generateCalendar();
-        }
-    }
-    
-    updateUserStats();
 }
 
 // 显示备注历史
@@ -1657,35 +1413,40 @@ function showNoteHistory() {
     
     if (!userData.records || Object.keys(userData.records).length === 0) {
         historyContent.innerHTML = '<p style="text-align: center; color: #a0a0a0;">暂无备注记录</p>';
-        document.getElementById('note-history-dialog').classList.add('active');
-        return;
-    }
-    
-    const notes = [];
-    for (const [date, record] of Object.entries(userData.records)) {
-        if (record.note && record.note.trim()) {
-            notes.push({ date, note: record.note, createdAt: record.createdAt });
-        }
-    }
-    
-    notes.sort((a, b) => new Date(b.date) - new Date(a.date));
-    
-    if (notes.length === 0) {
-        historyContent.innerHTML = '<p style="text-align: center; color: #a0a0a0;">暂无备注记录</p>';
     } else {
-        notes.forEach(item => {
-            const noteElement = document.createElement('div');
-            noteElement.className = 'note-history-item';
-            noteElement.innerHTML = `
-            <div class="note-history-date">
-                <span>${item.date}</span>
-                <small>${item.createdAt ? new Date(item.createdAt).toLocaleDateString('zh-CN') : ''}</small>
-            </div>
-            <div class="note-history-content">
-                ${item.note.replace(/\n/g, '<br>')}
-            </div>`;
-            historyContent.appendChild(noteElement);
-        });
+        // 获取有备注的记录并按日期倒序排序
+        const notes = [];
+        for (const [date, record] of Object.entries(userData.records)) {
+            if (record.note && record.note.trim()) {
+                notes.push({
+                    date: date,
+                    note: record.note,
+                    createdAt: record.createdAt
+                });
+            }
+        }
+        
+        // 按日期倒序排序
+        notes.sort((a, b) => new Date(b.date) - new Date(a.date));
+        
+        if (notes.length === 0) {
+            historyContent.innerHTML = '<p style="text-align: center; color: #a0a0a0;">暂无备注记录</p>';
+        } else {
+            notes.forEach(item => {
+                const noteElement = document.createElement('div');
+                noteElement.className = 'note-history-item';
+                noteElement.innerHTML = `
+                <div class="note-history-date">
+                    <span>${item.date}</span>
+                    <small>${item.createdAt ? new Date(item.createdAt).toLocaleDateString('zh-CN') : ''}</small>
+                </div>
+                <div class="note-history-content">
+                    ${item.note.replace(/\n/g, '<br>')}
+                </div>
+                `;
+                historyContent.appendChild(noteElement);
+            });
+        }
     }
     
     document.getElementById('note-history-dialog').classList.add('active');
@@ -1713,59 +1474,48 @@ function showHelp() {
         <div class="help-section">
             <h3><i class="fas fa-play-circle"></i> 基本使用</h3>
             <ol class="help-list steps">
-                <li><strong>注册账户</strong>：首次使用请注册，用户名全局唯一，密码为6位数字</li>
-                <li><strong>登录</strong>：使用注册的用户名和密码登录，需要网络验证</li>
+                <li><strong>注册账户</strong>：首次使用请注册，用户名唯一，密码为6位数字</li>
+                <li><strong>登录</strong>：使用注册的用户名和密码登录</li>
                 <li><strong>记录数据</strong>：每天结束时填写各项资源的总量</li>
-                <li><strong>保存数据</strong>：点击"保存到本地"按钮</li>
+                <li><strong>保存数据</strong>：点击"保存今日总量"按钮</li>
+                <li><strong>查看统计</strong>：系统自动计算每日盈亏和本月累计</li>
             </ol>
         </div>
-        
         <div class="help-section">
-            <h3><i class="fas fa-cloud-upload-alt"></i> 上传到云端</h3>
-            <ol class="help-list steps">
-                <li>点击右上角<strong>"上传到云端"</strong>按钮</li>
-                <li>确认隐私协议</li>
-                <li>数据将上传到管理员管理的GitHub仓库</li>
-                <li>每天不限上传次数，但会覆盖之前的上传</li>
-                <li><strong>重要：</strong>管理员可以看到您的数据，请勿上传敏感信息</li>
-            </ol>
-            <div class="warning">
-                <p><i class="fas fa-exclamation-triangle"></i> <strong>警告：</strong>上传到云端的数据管理员可以看到，请仅上传游戏资源数据。</p>
-            </div>
-        </div>
-        
-        <div class="help-section">
-            <h3><i class="fas fa-cloud-download-alt"></i> 从云端下载</h3>
-            <ol class="help-list steps">
-                <li>点击右上角<strong>"从云端下载"</strong>按钮</li>
-                <li>确认操作（将覆盖本地所有数据）</li>
-                <li>云端数据将替换您本地的所有记录</li>
-                <li>原始数据会自动备份，可通过导入备份恢复</li>
-            </ol>
-            <div class="warning">
-                <p><i class="fas fa-exclamation-triangle"></i> <strong>警告：</strong>下载操作会覆盖本地数据，请谨慎操作！</p>
-            </div>
-        </div>
-        
-        <div class="help-section">
-            <h3><i class="fas fa-database"></i> 本地数据管理</h3>
+            <h3><i class="fas fa-database"></i> 数据管理</h3>
             <h4>导出数据（备份）</h4>
             <ol class="help-list steps">
-                <li>点击右上角<strong>"导出"</strong>按钮</li>
-                <li>选择导出当前用户数据或所有用户数据</li>
-                <li>浏览器会自动下载备份文件</li>
-                <li>建议定期备份重要数据</li>
+                <li>点击右上角<strong>"导出"</strong>按钮（绿色）</li>
+                <li>浏览器会自动下载备份文件：<code>pes_data_用户名_日期.json</code></li>
+                <li>将此文件保存到安全位置</li>
             </ol>
-            
             <h4>导入数据（恢复）</h4>
             <ol class="help-list steps">
-                <li>点击右上角<strong>"从文件恢复"</strong>按钮</li>
+                <li>点击右上角<strong>"导入"</strong>按钮（蓝色）</li>
                 <li>选择之前导出的JSON文件</li>
-                <li>确认后会覆盖当前数据</li>
-                <li>单用户导入时，密码会保留不变</li>
+                <li>系统会提示确认，确认后会覆盖当前数据</li>
             </ol>
+            <h4>云端同步</h4>
+            <ol class="help-list steps">
+                <li>点击右上角<strong>"同步"</strong>按钮（深绿色）</li>
+                <li>每天限同步1次</li>
+                <li>数据将通过云函数存储在GitHub云端</li>
+                <li><strong>注意：Token已移至后端，前端无需配置</strong></li>
+            </ol>
+            <div class="warning">
+                <p><i class="fas fa-exclamation-triangle"></i> <strong>警告：</strong>导入数据会覆盖当前的所有记录，请谨慎操作！</p>
+            </div>
         </div>
-        
+        <div class="help-section">
+            <h3><i class="fas fa-star"></i> 主要功能</h3>
+            <ul class="help-list">
+                <li><strong>今日数据录入</strong>：记录每日结束时各项资源的总量</li>
+                <li><strong>导入昨日数据</strong>：一键复制昨天总量，只需修改变化部分</li>
+                <li><strong>备注功能</strong>：可为每天记录添加备注</li>
+                <li><strong>本月日报表</strong>：日历视图显示每日盈亏，点击日期查看详情</li>
+                <li><strong>统计概览</strong>：显示今日总量和本月累计盈亏</li>
+            </ul>
+        </div>
         <div class="help-section">
             <h3><i class="fas fa-keyboard"></i> 快捷键</h3>
             <ul class="help-list">
@@ -1776,29 +1526,29 @@ function showHelp() {
                 <li><span class="shortcut">← →</span> - 切换日期</li>
             </ul>
         </div>
-        
         <div class="help-section">
-            <h3><i class="fas fa-question-circle"></i> 常见问题</h3>
+            <h3><i class="fas fa-life-ring"></i> 常见问题</h3>
+            <h4>Q1: 数据存在哪里？会丢失吗？</h4>
+            <p>数据默认存储在您的浏览器本地。如果您清除浏览器数据或更换设备，数据会丢失。请定期使用"导出"功能备份。</p>
             
-            <h4>Q1: 为什么注册/登录需要网络连接？</h4>
-            <p>系统强制确保用户名全局唯一，必须连接云端验证用户名是否已被占用。</p>
+            <h4>Q2: 如何在不同设备间同步数据？</h4>
+            <p>1. 在旧设备上"导出数据"<br>2. 将备份文件传输到新设备<br>3. 在新设备上"导入数据"</p>
             
-            <h4>Q2: 无网络时能否使用？</h4>
-            <p>已注册登录的用户可以查看和修改本地数据，但无法注册新账户、验证登录或同步数据。</p>
+            <h4>Q3: 密码忘记了怎么办？</h4>
+            <p>目前无法找回密码。建议您妥善保管密码。</p>
             
-            <h4>Q3: 上传和下载有什么区别？</h4>
-            <p><strong>上传</strong>：将本地数据发送到云端，覆盖云端数据<br>
-            <strong>下载</strong>：将云端数据下载到本地，覆盖本地数据<br>
-            <strong>注意：</strong>下载会覆盖本地所有记录，请谨慎操作！</p>
+            <h4>Q4: 为什么我的数据显示红色负数？</h4>
+            <p>红色表示当日总量比前一日减少。请检查数据是否正确，如果确实减少了，这是正常的。</p>
             
-            <h4>Q4: 能否多设备使用同一账号？</h4>
-            <p>可以。在各设备上使用相同用户名登录，然后通过上传/下载保持数据同步。</p>
+            <h4>Q5: 管理员功能有什么作用？</h4>
+            <p>管理员可以查看所有用户数据、删除用户、导出全部数据。密码请询问系统管理员。</p>
             
-            <h4>Q5: 数据安全如何保障？</h4>
-            <p>1. 本地数据仅存储在您的浏览器中<br>
-            2. 云端使用腾讯云函数作为中间层，保护GitHub Token<br>
-            3. 请勿存储任何敏感个人信息<br>
-            4. 建议定期导出备份</p>
+            <h4>Q6: 云端同步和本地存储有什么区别？</h4>
+            <p>云端同步：数据存储在云函数后端的GitHub Gist中，可以在不同设备间同步，但每天有次数限制。<br>
+            本地存储：数据仅存储在您的浏览器中，不会上传到云端，没有同步次数限制。</p>
+            
+            <h4>Q7: 云函数连接失败怎么办？</h4>
+            <p>1. 检查网络连接<br>2. 点击右上角"测试云连接"按钮检查问题<br>3. 联系管理员修复云函数配置</p>
         </div>
     </div>
     `;
@@ -1811,36 +1561,81 @@ function closeHelp() {
 
 // 隐私信息和关于我们
 function showPrivacyInfo() {
-    alert('隐私政策：\n1. 数据默认存储在浏览器本地\n2. 上传到云端后，数据将通过云函数存储在GitHub Gist中\n3. 管理员可以看到GitHub上的所有用户数据\n4. 请勿存储任何敏感个人信息\n5. 建议定期导出数据备份');
+    alert('隐私政策：\n1. 数据默认存储在浏览器本地\n2. 选择云端同步后，数据将通过云函数存储在GitHub Gist中\n3. 管理员可以看到GitHub上的所有用户数据\n4. 请勿存储任何敏感个人信息\n5. 建议定期导出数据备份');
 }
 
 function showAbout() {
-    alert('关于实况足球资源记录器：\n版本：v2.1（用户名全局唯一）\n功能：记录游戏资源、计算盈亏、数据备份和云端同步\n说明：完全免费，仅供学习交流使用\n作者：实况足球爱好者\n更新日期：2024年\n后端架构：腾讯云函数 + GitHub API');
+    alert('关于实况足球资源记录器：\n版本：v2.0（使用云函数后端）\n功能：记录游戏资源、计算盈亏、数据备份和云端同步\n说明：完全免费，仅供学习交流使用\n作者：实况足球爱好者\n更新日期：2024年\n后端架构：腾讯云函数 + GitHub API');
 }
 
 // 测试云函数连接
 async function testCloudConnection() {
+    console.log('=== 手动测试云函数连接 ===');
     if (!cloudSyncManager) {
         alert('云函数同步管理器未初始化');
         return;
     }
     
+    // 重置云函数可用状态
+    isCloudAvailable = false;
+    
     try {
+        const testBtn = document.querySelector('.btn-secondary:last-child');
+        const originalText = testBtn.innerHTML;
+        testBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 测试中...';
+        testBtn.disabled = true;
+        
+        // 测试基本连接
         const testResult = await cloudSyncManager.testConnection();
-        let message = `测试结果:\n1. 连接测试: ${testResult.success ? '✅ 成功' : '❌ 失败'}\n${testResult.message}`;
+        console.log('连接测试结果:', testResult);
+        
+        // 显示结果
+        let message = `连接测试结果:\n`;
         
         if (testResult.success) {
-            const gistResult = await cloudSyncManager.getAllUsersData();
-            message += `\n2. Gist访问: ${gistResult.success ? '✅ 成功' : '❌ 失败'}\n${gistResult.message || gistResult.error || '无错误信息'}`;
-            if (gistResult.success) {
-                message += `\n总用户数: ${gistResult.totalUsers || 0}`;
-                message += `\n最后更新: ${gistResult.lastUpdated ? new Date(gistResult.lastUpdated).toLocaleString('zh-CN') : '未知'}`;
+            message += `✅ 连接成功\n`;
+            message += `• GitHub 用户: ${testResult.data?.login || '未知'}\n`;
+            isCloudAvailable = true;
+        } else {
+            message += `❌ 连接失败\n`;
+            message += `• 原因: ${testResult.message || '未知错误'}\n`;
+            isCloudAvailable = false;
+        }
+        
+        // 测试用户名检查功能
+        if (testResult.success) {
+            try {
+                const checkResult = await cloudSyncManager.checkUsernameAvailability('test_user_' + Date.now());
+                if (checkResult.available !== undefined) {
+                    message += `✅ 用户名检查功能正常\n`;
+                } else {
+                    message += `⚠️ 用户名检查功能异常\n`;
+                    isCloudAvailable = false;
+                }
+            } catch (error) {
+                message += `⚠️ 用户名检查功能异常: ${error.message}\n`;
+                isCloudAvailable = false;
             }
+        }
+        
+        // 更新云端状态
+        if (isCloudAvailable) {
+            updateCloudStatus('已连接', 'success');
+        } else {
+            updateCloudStatus('功能异常', 'error');
         }
         
         alert(message);
     } catch (error) {
         console.error('测试失败:', error);
-        alert('测试失败: ' + error.message);
+        alert('测试失败: ' + error.message + '\n云函数连接不可用');
+        isCloudAvailable = false;
+        updateCloudStatus('连接失败', 'error');
+    } finally {
+        const testBtn = document.querySelector('.btn-secondary:last-child');
+        if (testBtn) {
+            testBtn.innerHTML = '<i class="fas fa-server"></i> 测试云连接';
+            testBtn.disabled = false;
+        }
     }
 }
