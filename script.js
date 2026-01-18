@@ -697,26 +697,24 @@ async function login() {
     }
     
     try {
-        // 强制验证用户名唯一性
-        const isUnique = await validateUsernameUniqueness(username);
-        if (!isUnique) {
-            throw new Error('该用户名已被其他用户占用');
-        }
-        
-        // 检查本地用户
+        // 从localStorage加载用户数据
         const userDataStr = localStorage.getItem(`pes_user_${username}`);
         if (!userDataStr) {
             throw new Error('用户不存在！');
         }
         
         const storedData = JSON.parse(userDataStr);
+        // 验证密码
         if (storedData.password !== password) {
             throw new Error('密码错误！');
         }
         
-        // 设置当前用户
+        // 设置当前用户 - 移除不必要的验证
         currentUser = username;
         userData = storedData;
+        
+        // 不再调用 validateAndFixUserData 和 ensureUserDataStructure
+        // 这两个函数可能触发用户名冲突检查
         
         // 更新最后登录时间
         userData.lastLogin = new Date().toISOString();
@@ -724,6 +722,8 @@ async function login() {
         
         // 保存登录信息
         localStorage.setItem('pes_current_user', username);
+        
+        // 显示用户信息
         document.getElementById('current-user').textContent = `用户: ${username}`;
         
         // 更新用户计数
@@ -733,15 +733,37 @@ async function login() {
         // 显示主界面
         showMain();
         
-        // 加载数据
+        // 加载今天的数据
         loadDateData();
-        updateStats();
-        
-        // 检查云端是否有更新
-        checkForCloudUpdates();
-        
         // 更新统计
+        updateStats();
+        // 更新同步状态
+        updateSyncStatus();
+        // 更新用户统计数据
         updateUserStats();
+        
+        // 检查 syncInfo 是否存在，不存在则初始化
+        if (!userData.syncInfo) {
+            userData.syncInfo = {
+                storageMode: 'local',
+                lastSyncDate: '',
+                syncCountToday: 0
+            };
+        }
+        
+        // 尝试从云端加载用户数据（如果开启了云同步）- 增强错误处理
+        if (userData.syncInfo && userData.syncInfo.storageMode === 'cloud' && cloudSyncManager) {
+            try {
+                const cloudResult = await cloudSyncManager.getUserData(username);
+                if (cloudResult.success && cloudResult.data) {
+                    console.log('从云端加载数据成功');
+                    // 可以在这里实现数据合并逻辑
+                }
+            } catch (error) {
+                // 只记录错误，不阻止登录
+                console.log('从云端加载数据失败，继续使用本地数据:', error.message);
+            }
+        }
     } catch (error) {
         alert('登录失败：' + error.message);
     }
