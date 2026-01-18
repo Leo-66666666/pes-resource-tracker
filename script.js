@@ -1176,18 +1176,15 @@ async function syncToCloud() {
         alert('请先登录！');
         return;
     }
-    
     if (!cloudSyncManager) {
         alert('云同步功能未配置，请联系管理员！');
         return;
     }
-    
     // 严格检查云函数是否可用
     if (!isCloudAvailable) {
         alert('⚠️ 云函数连接不可用，无法同步数据！\n请检查网络连接或联系管理员。');
         return;
     }
-    
     // 检查存储模式
     if (userData.syncInfo.storageMode !== 'cloud') {
         if (!confirm('您当前是本地存储模式，切换到云端同步模式吗？\n切换后数据将上传到云端。')) {
@@ -1196,26 +1193,22 @@ async function syncToCloud() {
         userData.syncInfo.storageMode = 'cloud';
         localStorage.setItem(`pes_user_${currentUser}`, JSON.stringify(userData));
     }
-    
     // 检查同步限制
     const syncInfo = userData.syncInfo || {};
     const today = new Date().toDateString();
-    
     if (syncInfo.lastSyncDate === today && syncInfo.syncCountToday >= CONFIG.SYNC_LIMIT_PER_DAY) {
         alert(`今天已经同步过 ${CONFIG.SYNC_LIMIT_PER_DAY} 次了，请明天再试！`);
         return;
     }
-    
     // 确认同步
     if (!confirm(`⚠️ 数据将同步到云端\n${CONFIG.PRIVACY_WARNING}\n确定要同步吗？`)) {
         return;
     }
-    
-    // 显示加载状态
-    const syncBtn = document.getElementById('sync-button');
+    // 显示加载状态 - 修改这里：将'sync-button'改为'upload-button'
+    const syncBtn = document.getElementById('upload-button'); // 修改这一行
     const originalText = syncBtn.innerHTML;
     const originalDisabled = syncBtn.disabled;
-    syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 同步中...';
+    syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 上传中...'; // 修改文字为"上传中"
     syncBtn.disabled = true;
     
     try {
@@ -1224,10 +1217,8 @@ async function syncToCloud() {
             ...userData,
             lastSync: new Date().toISOString()
         };
-        
         // 调用云函数API
         const result = await cloudSyncManager.updateUserData(currentUser, syncData);
-        
         if (result.success) {
             // 更新本地同步信息
             if (!userData.syncInfo) {
@@ -1240,16 +1231,12 @@ async function syncToCloud() {
             }
             userData.syncInfo.lastSyncDate = today;
             userData.syncInfo.lastSyncTime = new Date().toISOString();
-            
             // 保存到本地
             localStorage.setItem(`pes_user_${currentUser}`, JSON.stringify(userData));
-            
             // 更新界面
             updateSyncStatus();
             updateDataSourceIndicator('synced');
-            
             alert(`✅ 同步成功！\n• 总用户数: ${result.userCount}/${CONFIG.MAX_USERS}\n• 今日剩余同步次数: ${CONFIG.SYNC_LIMIT_PER_DAY - userData.syncInfo.syncCountToday}\n数据已安全存储在云端！`);
-            
             // 更新用户统计数据
             updateUserStats();
         } else {
@@ -1261,8 +1248,10 @@ async function syncToCloud() {
         updateDataSourceIndicator('local');
     } finally {
         // 恢复按钮状态
-        syncBtn.innerHTML = originalText;
-        syncBtn.disabled = originalDisabled;
+        if (syncBtn) { // 添加安全检查
+            syncBtn.innerHTML = originalText;
+            syncBtn.disabled = originalDisabled;
+        }
     }
 }
 
