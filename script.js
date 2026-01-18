@@ -189,7 +189,7 @@ class CloudSyncManager {
             if (result.success) {
                 return {
                     success: true,
-                     result.data || { users: {}, metadata: { totalUsers: 0, version: '1.0' } },
+                    data: result.data || { users: {}, metadata: { totalUsers: 0, version: '1.0' } },
                     lastUpdated: result.lastUpdated,
                     totalUsers: result.totalUsers || 0,
                     isNew: false
