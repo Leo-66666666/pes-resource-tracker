@@ -538,6 +538,7 @@ function showMain() {
 }
 
 // 用户登录
+// 用户登录
 async function login() {
     const username = document.getElementById('username').value.trim();
     const password = document.getElementById('password').value.trim();
@@ -553,48 +554,76 @@ async function login() {
     }
     
     try {
-        // 从localStorage加载用户数据
-        const userDataStr = localStorage.getItem(`pes_user_${username}`);
+        // 1. 先尝试从本地加载用户数据
+        let userDataStr = localStorage.getItem(`pes_user_${username}`);
+        let storedData = null;
+        
+        // 2. 如果本地没有，且云函数可用，尝试从云端获取
+        if (!userDataStr && cloudSyncManager && isCloudAvailable) {
+            const confirmFetch = confirm(`本地没有找到用户 "${username}"，是否从云端获取数据？\n这将下载该用户的全部记录到本设备。`);
+            if (confirmFetch) {
+                try {
+                    const cloudResult = await cloudSyncManager.getUserData(username);
+                    if (cloudResult.success && cloudResult.data) {
+                        // 保存到本地
+                        localStorage.setItem(`pes_user_${username}`, JSON.stringify(cloudResult.data));
+                        userDataStr = JSON.stringify(cloudResult.data);
+                        alert(`✅ 已从云端获取用户 "${username}" 的数据！`);
+                    } else {
+                        throw new Error(cloudResult.message || '云端未找到该用户');
+                    }
+                } catch (cloudError) {
+                    console.error('从云端获取用户失败:', cloudError);
+                    alert('⚠️ 从云端获取用户数据失败，可能网络问题或用户不存在');
+                }
+            } else {
+                throw new Error('用户取消从云端获取数据');
+            }
+        }
+        
+        // 3. 验证用户数据
         if (!userDataStr) {
             throw new Error('用户不存在！');
         }
         
-        const storedData = JSON.parse(userDataStr);
-        // 验证密码
+        storedData = JSON.parse(userDataStr);
+        
+        // 4. 验证密码
         if (storedData.password !== password) {
             throw new Error('密码错误！');
         }
         
-        // 设置当前用户
+        // 5. 设置当前用户
         currentUser = username;
         userData = storedData;
         
-        // 更新最后登录时间
+        // 6. 更新最后登录时间
         userData.lastLogin = new Date().toISOString();
         localStorage.setItem(`pes_user_${currentUser}`, JSON.stringify(userData));
         
-        // 保存登录信息到本地存储
+        // 7. 保存登录信息
         localStorage.setItem('pes_current_user', username);
         
-        // 显示用户信息
+        // 8. 更新界面
         document.getElementById('current-user').textContent = `用户: ${username}`;
         
-        // 更新用户计数
+        // 9. 更新用户统计
         const usersData = JSON.parse(localStorage.getItem('pes_users') || '{"users": []}');
+        if (!usersData.users.includes(username)) {
+            usersData.users.push(username);
+            localStorage.setItem('pes_users', JSON.stringify(usersData));
+        }
         document.getElementById('user-count').textContent = `${usersData.users.length}`;
         
-        // 显示主界面
+        // 10. 显示主界面
         showMain();
-        
-        // 加载今天的数据
         loadDateData();
-        // 更新统计
         updateStats();
-        // 更新同步状态
         updateSyncStatus();
-        // 更新用户统计数据
         updateUserStats();
+        
     } catch (error) {
+        console.error('登录失败:', error);
         alert('登录失败：' + error.message);
     }
 }
