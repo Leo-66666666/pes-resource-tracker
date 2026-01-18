@@ -1170,25 +1170,47 @@ ${usernames}`);
         
         // 执行确认的操作
         function executeConfirmedAction() {
-            const password = document.getElementById('confirm-password')?.value;
-            // 验证管理员密码
-            if (!password || (password !== '114514' && password !== '123456')) {
-                alert('管理员密码错误！');
-                return;
+            // 根据操作类型获取不同的确认值
+            let confirmValue = '';
+            if (pendingAction?.type === 'clear_local' || pendingAction?.type === 'reset_system') {
+                confirmValue = document.getElementById('confirm-text')?.value || '';
+            } else {
+                confirmValue = document.getElementById('confirm-password')?.value || '';
             }
             
+            // 验证确认值
             if (pendingAction) {
                 switch (pendingAction.type) {
                     case 'delete_user':
+                        // 验证管理员密码
+                        if (!confirmValue || (confirmValue !== '114514' && confirmValue !== '123456')) {
+                            alert('管理员密码错误！');
+                            return;
+                        }
                         deleteUser(pendingAction.data.username);
                         break;
                     case 'clear_local':
+                        // 验证确认文本
+                        if (confirmValue !== 'DELETE ALL LOCAL') {
+                            alert('确认文本不正确，操作已取消');
+                            return;
+                        }
                         clearLocalData();
                         break;
                     case 'clear_cloud':
-                        clearCloudDataConfirmed(password);
+                        // 验证管理员密码
+                        if (!confirmValue || (confirmValue !== '114514' && confirmValue !== '123456')) {
+                            alert('管理员密码错误！');
+                            return;
+                        }
+                        clearCloudDataConfirmed(confirmValue);
                         break;
                     case 'reset_system':
+                        // 验证确认文本
+                        if (confirmValue !== 'RESET SYSTEM NOW') {
+                            alert('确认文本不正确，操作已取消');
+                            return;
+                        }
                         resetSystemConfirmed();
                         break;
                 }
@@ -1551,55 +1573,37 @@ ${issues.join('\n')}`;
         }
         
         // 执行清空云端数据
-        async function clearCloudDataConfirmed() {
-            const confirmText = document.getElementById('confirm-text')?.value;
-            if (confirmText !== 'DELETE CLOUD DATA') {
-                alert('确认文本不正确，操作已取消');
-                return;
-            }
-            
+        async function clearCloudDataConfirmed(password) {
             try {
                 setLoading(true);
+                // 不再验证确认文本，直接使用传入的密码
+                if (!window.cloudSyncManager) {
+                    throw new Error('云函数未初始化');
+                }
                 
-                // 清空云端Gist
-                if (window.cloudSyncManager) {
-                    // 创建空的数据结构
-                    const emptyData = {
-                        users: {},
-                        metadata: {
-                            totalUsers: 0,
-                            lastUpdated: new Date().toISOString(),
-                            version: '2.1'
-                        }
-                    };
-                    
-                    // 调用云函数更新Gist
-                    const response = await fetch(CONFIG.CLOUD_BACKEND.URL + '/clear', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            adminPassword: currentAdminPassword,
-                            data: emptyData
-                        })
-                    });
-                    
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                    }
-                    
-                    const result = await response.json();
-                    if (result.success) {
-                        logAction('已清空云端数据', 'success');
-                        alert('云端数据已清空！');
-                        // 重新加载云端数据
-                        await loadCloudUsers();
-                    } else {
-                        throw new Error(result.message || '清空云端数据失败');
-                    }
+                // 调用云函数清空数据
+                const response = await fetch(`${CONFIG.CLOUD_BACKEND.URL}/clear-cloud`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        adminPassword: password
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                if (result.success) {
+                    logAction('云端数据已清空', 'success');
+                    alert('云端数据已清空！');
+                    // 重新加载云端数据
+                    await loadCloudUsers();
                 } else {
-                    alert('云函数地址未配置，无法清空云端数据');
+                    throw new Error(result.message || '清空云端数据失败');
                 }
             } catch (error) {
                 logAction('清空云端数据失败: ' + error.message, 'error');
@@ -1638,38 +1642,47 @@ ${issues.join('\n')}`;
 
         // 执行系统重置
         async function resetSystemConfirmed() {
-            const confirmText = document.getElementById('confirm-text')?.value;
-            if (confirmText !== 'RESET SYSTEM NOW') {
-                alert('确认文本不正确，操作已取消');
-            return;
-        }
-
-        try {
-        setLoading(true);
-        logAction('开始系统重置...');
-
-        // 1. 清空本地数据
-        clearLocalData();
-
-        // 2. 清空云端数据
-        if (window.cloudSyncManager) {
-        await clearCloudDataConfirmed();
-        }
-
-        logAction('系统重置完成', 'success');
-        alert('系统重置完成！所有数据已清空。页面将在3秒后刷新。');
-
-        // 3. 3秒后刷新页面
-        setTimeout(() => {
-        location.reload();
-        }, 3000);
-
-        } catch (error) {
-        logAction('系统重置失败: ' + error.message, 'error');
-        alert('系统重置失败: ' + error.message);
-        } finally {
-        setLoading(false);
-        }
+            try {
+                setLoading(true);
+                logAction('开始系统重置...');
+                
+                // 1. 清空本地数据
+                clearLocalData();
+                
+                // 2. 清空云端数据 - 使用管理员密码
+                if (window.cloudSyncManager && CONFIG.CLOUD_BACKEND.URL) {
+                    const response = await fetch(`${CONFIG.CLOUD_BACKEND.URL}/clear-cloud`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            adminPassword: '114514' // 使用默认密码
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    
+                    const result = await response.json();
+                    if (!result.success) {
+                        throw new Error(result.message || '清空云端数据失败');
+                    }
+                }
+                
+                logAction('系统重置完成', 'success');
+                alert('系统重置完成！所有数据已清空。页面将在3秒后刷新。');
+                // 3. 3秒后刷新页面
+                setTimeout(() => {
+                    location.reload();
+                }, 3000);
+            } catch (error) {
+                logAction('系统重置失败: ' + error.message, 'error');
+                alert('系统重置失败: ' + error.message);
+            } finally {
+                setLoading(false);
+            }
         }
 
         // 刷新所有数据
