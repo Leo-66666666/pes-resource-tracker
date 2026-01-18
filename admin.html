@@ -1629,4 +1629,109 @@ ${issues.join('\n')}`;
                 <li>此操作无法撤销！</li>
             </ul>
             <p style="margin-top: 15px; padding: 10px; background: #000; color: #fff; border-radius: 4px;">
-                <i class="fas fa-skull"></i> 请输入 "<strong>RESET SYSTEM NOW</
+            <i class="fas fa-skull"></i> 请输入 "<strong>RESET SYSTEM NOW</strong>" 确认操作：<br>
+            <input type="text" id="confirm-text" style="width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #dc3545; background: #333; color: white;">
+            </p>
+            `;
+            document.getElementById('confirm-modal').classList.add('active');
+            }
+
+        // 执行系统重置
+        async function resetSystemConfirmed() {
+            const confirmText = document.getElementById('confirm-text')?.value;
+            if (confirmText !== 'RESET SYSTEM NOW') {
+                alert('确认文本不正确，操作已取消');
+            return;
+        }
+
+        try {
+        setLoading(true);
+        logAction('开始系统重置...');
+
+        // 1. 清空本地数据
+        clearLocalData();
+
+        // 2. 清空云端数据
+        if (window.cloudSyncManager) {
+        await clearCloudDataConfirmed();
+        }
+
+        logAction('系统重置完成', 'success');
+        alert('系统重置完成！所有数据已清空。页面将在3秒后刷新。');
+
+        // 3. 3秒后刷新页面
+        setTimeout(() => {
+        location.reload();
+        }, 3000);
+
+        } catch (error) {
+        logAction('系统重置失败: ' + error.message, 'error');
+        alert('系统重置失败: ' + error.message);
+        } finally {
+        setLoading(false);
+        }
+        }
+
+        // 刷新所有数据
+        function refreshAllData() {
+        logAction('手动刷新所有数据');
+        loadAllData();
+        }
+
+        // 记录操作日志
+        function logAction(message, type = 'info') {
+        const timestamp = new Date().toLocaleTimeString('zh-CN');
+        const logEntry = document.createElement('div');
+        logEntry.className = `log-entry ${type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'warning' ? 'warning' : ''}`;
+        logEntry.innerHTML = `[${timestamp}] ${message}`;
+        document.getElementById('admin-logs').insertBefore(logEntry, document.getElementById('admin-logs').firstChild);
+
+        // 限制日志数量
+        const logEntries = document.querySelectorAll('#admin-logs .log-entry');
+        if (logEntries.length > 20) {
+        logEntries[logEntries.length - 1].remove();
+        }
+        }
+
+        // 设置加载状态
+        function setLoading(isLoading) {
+        if (isLoading) {
+        document.body.classList.add('loading');
+        document.body.style.cursor = 'wait';
+        } else {
+        document.body.classList.remove('loading');
+        document.body.style.cursor = 'default';
+        }
+        }
+
+        // 关闭模态框
+        function closeModal(modalId) {
+        document.getElementById(modalId).classList.remove('active');
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function() {
+        // 初始化云函数同步
+        initCloudSync();
+
+        // 加载所有数据
+        loadAllData();
+
+        // 搜索框实时过滤
+        document.getElementById('user-search').addEventListener('input', function() {
+        displayUserList(allUsersData);
+        });
+
+        // 回车键登录
+        document.getElementById('admin-password').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+        verifyAdmin();
+        }
+        });
+
+        // 初始化时更新开始时间
+        document.getElementById('start-time').textContent = new Date().toLocaleString('zh-CN');
+        });
+</script>
+</body>
+</html>
