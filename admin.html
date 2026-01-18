@@ -866,22 +866,37 @@
         async function loadCloudUsers() {
             try {
                 if (!window.cloudSyncManager) return;
-                
                 const result = await window.cloudSyncManager.getAllUsersData();
                 if (result.success) {
                     cloudUsersData = result.data || { users: {} };
-                    logAction(`加载了 ${Object.keys(cloudUsersData.users || {}).length} 个云端用户`, 'success');
+                    const userCount = Object.keys(cloudUsersData.users || {}).length;
+                    logAction(`加载了 ${userCount} 个云端用户`, 'success');
                     
-                    // 更新数据状态
-                    document.getElementById('data-status').textContent = '云端数据已同步';
-                    document.getElementById('data-status').className = 'status-badge status-synced';
+                    // 安全更新数据状态 - 添加空值检查
+                    const dataStatusEl = document.getElementById('data-status');
+                    if (dataStatusEl) {
+                        dataStatusEl.textContent = `云端数据已同步 (${userCount})`;
+                        dataStatusEl.className = 'status-badge status-synced';
+                    } else {
+                        console.warn('数据状态元素不存在，跳过更新');
+                    }
                 } else {
                     throw new Error(result.message || '获取云端数据失败');
                 }
             } catch (error) {
                 logAction('加载云端用户数据失败: ' + error.message, 'error');
-                document.getElementById('data-status').textContent = '云端连接失败';
-                document.getElementById('data-status').className = 'status-badge status-error';
+                
+                // 安全更新错误状态 - 添加空值检查
+                const dataStatusEl = document.getElementById('data-status');
+                if (dataStatusEl) {
+                    dataStatusEl.textContent = '云端连接失败';
+                    dataStatusEl.className = 'status-badge status-error';
+                } else {
+                    console.warn('数据状态元素不存在，无法更新错误状态');
+                }
+                
+                // 返回空数据，避免后续处理错误
+                cloudUsersData = { users: {} };
             }
         }
         
@@ -1337,7 +1352,6 @@ ${usernames}`);
             try {
                 setLoading(true);
                 logAction('开始同步所有用户数据到云端...');
-                
                 let successCount = 0;
                 let failCount = 0;
                 
@@ -1355,22 +1369,26 @@ ${usernames}`);
                     } catch (error) {
                         failCount++;
                         logAction(`用户 ${user.username} 同步出错: ${error.message}`, 'error');
+                        
+                        // 不中断整个流程，继续其他用户
+                        continue;
                     }
                 }
                 
-                const message = `批量同步完成！
-        成功: ${successCount} 个用户
-        失败: ${failCount} 个用户`;
+                // 仅在有成功同步时才重新加载云端数据
+                if (successCount > 0) {
+                    await loadCloudUsers();
+                    updateStatistics();
+                }
                 
+                const message = `批量同步完成！
+            成功: ${successCount} 个用户
+            失败: ${failCount} 个用户`;
                 logAction(message, successCount > 0 ? 'success' : 'warning');
                 alert(message);
-                
-                // 重新加载云端数据
-                await loadCloudUsers();
-                updateStatistics();
             } catch (error) {
-                logAction('批量同步失败: ' + error.message, 'error');
-                alert('批量同步失败: ' + error.message);
+                logAction('批量同步流程异常: ' + error.message, 'error');
+                alert('批量同步流程异常: ' + error.message + '\n但部分用户可能已同步成功。');
             } finally {
                 setLoading(false);
             }
